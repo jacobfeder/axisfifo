@@ -121,7 +121,7 @@ MODULE_DESCRIPTION("axis-fifo: interface to the Xilinx AXI-Stream FIFO v4.1 IP c
 #define XLLF_INT_RXERROR_MASK     0xe0000000 // Receive Error status ints
 #define XLLF_INT_TXERROR_MASK     0x12000000 // Transmit Error status ints
 
-// associated with the XLLF_TDFR_OFFSET and XLLF_RDFR_OFFSET reset registers
+// associated with the reset registers
 #define XLLF_RDFR_RESET_MASK        0x000000a5 // receive reset value
 #define XLLF_TDFR_RESET_MASK        0x000000a5 // Transmit reset value
 #define XLLF_SRR_RESET_MASK         0x000000a5 // Local Link reset value
@@ -326,24 +326,24 @@ static ssize_t axis_fifo_read(struct file *device_file, char __user *buf, size_t
 
 	bytes_available = read_reg(XLLF_RLR_OFFSET);
 	if (!bytes_available) {
-		printkerr("received a packet of length 0\n");
-		// reset receive fifo
-		write_reg(XLLF_RDFR_OFFSET, XLLF_RDFR_RESET_MASK);
+		printkerr("received a packet of length 0 - fifo core will be reset\n");
+		// reset IP core
+		write_reg(XLLF_SRR_OFFSET, XLLF_SRR_RESET_MASK);
 		return -EIO;
 	}
 
 	if (bytes_available > len) {
-		printkerr("user read buffer too small (available=%u len=%u)\n", bytes_available, len);
-		// reset receive fifo
-		write_reg(XLLF_RDFR_OFFSET, XLLF_RDFR_RESET_MASK);
+		printkerr("user read buffer too small (available=%u len=%u) - fifo core will be reset\n", bytes_available, len);
+		// reset IP core
+		write_reg(XLLF_SRR_OFFSET, XLLF_SRR_RESET_MASK);
 		return -EINVAL;
 	}
 
 	if (bytes_available % 4) {
 		// this probably can't happen unless IP registers were previously mishandled
-		printkerr("received a packet that isn't word-aligned\n");
-		// reset receive fifo
-		write_reg(XLLF_RDFR_OFFSET, XLLF_RDFR_RESET_MASK);
+		printkerr("received a packet that isn't word-aligned - fifo core will be reset\n");
+		// reset IP core
+		write_reg(XLLF_SRR_OFFSET, XLLF_SRR_RESET_MASK);
 		return -ENOSYS;
 	}
 
@@ -356,9 +356,9 @@ static ssize_t axis_fifo_read(struct file *device_file, char __user *buf, size_t
 		read_buff[buff_word] = read_reg(XLLF_RDFD_OFFSET);
 		if ((buff_word == READ_BUFF_SIZE - 1) || (word == words_available - 1)) {
 			if (copy_to_user(buf + (word - buff_word)*4, read_buff, (buff_word + 1)*4)) {
-				printkerr("couldn't copy data to userspace buffer\n");
-				// reset receive fifo
-				write_reg(XLLF_RDFR_OFFSET, XLLF_RDFR_RESET_MASK);
+				printkerr("couldn't copy data to userspace buffer - fifo core will be reset\n");
+				// reset IP core
+				write_reg(XLLF_SRR_OFFSET, XLLF_SRR_RESET_MASK);
 				return -EFAULT;
 			}
 		}
@@ -405,7 +405,7 @@ static ssize_t axis_fifo_write(struct file *device_file, const char __user *buf,
 		// opened in non-blocking mode
 		// return if there is not enough room available in the fifo
 		if (words_to_write > read_reg(XLLF_TDFV_OFFSET)) {
-			return 0;
+			return -EAGAIN;
 		}
 	} else {
 		// opened in blocking mode
@@ -434,9 +434,9 @@ static ssize_t axis_fifo_write(struct file *device_file, const char __user *buf,
 		if (buff_word == 0) {
 			if (copy_from_user(write_buff, buf + word*4, word <= words_to_write - 
 				WRITE_BUFF_SIZE ? WRITE_BUFF_SIZE*4 : (words_to_write % WRITE_BUFF_SIZE)*4)) {
-				printkerr("couldn't copy data from userspace buffer\n");
-				// reset transmit fifo
-				write_reg(XLLF_TDFR_OFFSET, XLLF_TDFR_RESET_MASK);
+				printkerr("couldn't copy data from userspace buffer - fifo core will be reset\n");
+				// reset IP core
+				write_reg(XLLF_SRR_OFFSET, XLLF_SRR_RESET_MASK);
 				return -EFAULT;
 			}
 		}
@@ -898,6 +898,7 @@ static int axis_fifo_probe(struct platform_device *pdev)
 	assert_dts_property(use_tx_control, "tx control not supported\n")
 
 	// TODO: what does select-xpm do?
+	// TODO: data_interface_type
 
 	// set device wrapper properties based on IP config
 	device_wrapper->rx_fifo_depth = rx_fifo_depth;
@@ -907,12 +908,8 @@ static int axis_fifo_probe(struct platform_device *pdev)
 	
 	device_wrapper->fatal = 0;
 
-	// reset core
+	// reset IP core
 	write_reg(XLLF_SRR_OFFSET, XLLF_SRR_RESET_MASK);
-	// reset transmit fifo
-	write_reg(XLLF_TDFR_OFFSET, XLLF_TDFR_RESET_MASK);
-	// reset receive fifo
-	write_reg(XLLF_RDFR_OFFSET, XLLF_RDFR_RESET_MASK);
 	// enable interrupts
 	write_reg(XLLF_IER_OFFSET, XLLF_INT_TC_MASK | XLLF_INT_RC_MASK | XLLF_INT_RPURE_MASK |
 							   XLLF_INT_RPORE_MASK | XLLF_INT_RPUE_MASK | XLLF_INT_TPOE_MASK |
