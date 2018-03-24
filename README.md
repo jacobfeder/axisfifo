@@ -9,11 +9,11 @@ You should find a character device in /dev (e.g. /dev/axis_fifo0) for each AXI-S
 
 For example, you can write a packet to your fifo with
 ```bash
-echo -n -e '\xDE\xAD\xBE\xEF' > /dev/axis_fifo0
+echo -n -e '\xDE\xAD\xBE\xEF' > /dev/axis_fifo<#>
 ```
 and read from it with
 ```bash
-cat /dev/axis_fifo0 | hexdump -C
+cat /dev/axis_fifo<#> | hexdump -C
 ```
 
 When you write data to the fifo, the block of data is written as a packet as dictated by the length passed to write. When you call read(), a single packet is returned regardless of how many bytes were requested.
@@ -36,5 +36,18 @@ close(f_rd);
 ```
 
 Data can only be written and read in words (4 bytes).
+
+You can also access the registers directly if you wish using sysfs. They are located in
+```bash
+/sys/class/axis_fifo_class/axis_fifo<#>/
+```
+For example, you can read the RDFO with
+```bash
+cat /sys/class/axis_fifo<#>_class/axis_fifo<#>/rdfo | hexdump -C
+```
+or write to the fifo/TDFR with
+```bash
+echo -n -e '\xDE\xAD\xBE\xEF' > /sys/class/axisfifo<#>_class/axisfifo<#>/tdfd
+```
 
 You can use fifo_test.c to test functionality/throughput of your FIFO.
