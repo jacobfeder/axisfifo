@@ -5,7 +5,7 @@ Supports only store-forward mode with a 32-bit AXI4-Lite interface. DOES NOT sup
 - cut-through mode
 - AXI4 (non-lite)
 
-You should find a character device in /dev (e.g. /dex/axis_fifo0) for each AXI-Stream fifo you create in your hardware. The device can be read and written to like a normal file.
+You should find a character device in /dev (e.g. /dev/axis_fifo0) for each AXI-Stream fifo you create in your hardware. The device can be read and written to like a normal file.
 
 For example, you can write a packet to your fifo with
 ```bash
