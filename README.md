@@ -1,4 +1,4 @@
-# Zynq SoC Linux kernel driver for Xilinx AXI-Stream FIFO IP
+# Zynq Linux kernel driver for AXI-Stream FIFO IP
 Supports only store-forward mode with a 32-bit AXI4-Lite interface. DOES NOT support
 - cut-through mode
 - AXI4 (non-lite)
@@ -37,7 +37,7 @@ close(f_rd);
 
 Data can only be written and read in multiples of words (4 bytes).
 
-By default, read() and write() will block for one second before timing out (this can be changed by timeout #defines). You can also make non-blocking read/writes by opening the file with the O_NONBLOCK OS flag set which will return immediately:
+By default, read() and write() will block for one second before timing out (this can be changed by timeout #defines). You can also make non-blocking read/writes by opening the file with the O_NONBLOCK OS flag set which will cause read() and write() to return immediately:
 
 ```c
 int f = open("/dev/axis_fifo0", O_RDWR | O_NONBLOCK);
