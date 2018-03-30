@@ -26,7 +26,7 @@ pass in the number of words to write and the driver device file location(s)
 #define TIMEOUT 4
 
 // number of bytes to send in a packet (max is fifo depth * 4)
-#define MAX_PACKET_SIZE 512*4
+#define MAX_PACKET_SIZE 8096
 
 int main(int argc, char *argv[])
 {
@@ -160,9 +160,6 @@ int main(int argc, char *argv[])
 		unsigned bytes_remaining = data_string_len;
 		while (bytes_remaining) {
 
-			// randomize waits
-			//usleep(rand() % 10000);
-
 			// read from device until we get all the bytes sent or a timeout occurs
 			bytes_read = read(f, read_data, bytes_remaining);
 			if (bytes_read > 0) {
@@ -218,10 +215,7 @@ int main(int argc, char *argv[])
 		unsigned write_packet_size;
 		while (bytes_remaining) {
 
-			// randomize waits
-			//usleep(rand() % 10000);
-
-			write_packet_size = ((rand() % MAX_PACKET_SIZE/4) + 1) * 4;
+			write_packet_size = MAX_PACKET_SIZE;
 			bytes_written = write(f, bytes_to_write, bytes_remaining > write_packet_size ? write_packet_size : bytes_remaining);
 			if (bytes_written > 0) {
 				bytes_remaining -= bytes_written;

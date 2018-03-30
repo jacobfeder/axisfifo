@@ -65,7 +65,7 @@ MODULE_DESCRIPTION("axis-fifo: interface to the Xilinx AXI-Stream FIFO v4.1 IP c
 #define WRITE_TIMEOUT 1000
 
 // enable to turn on debugging messages
-#define DEBUG
+//#define DEBUG
 
 // Macro for printing debug messages inside driver callbacks (e.g. open/close/read/write)
 #ifdef DEBUG
@@ -83,9 +83,6 @@ MODULE_DESCRIPTION("axis-fifo: interface to the Xilinx AXI-Stream FIFO v4.1 IP c
 // read/write IP register
 #define write_reg(addr_offset, value) 	iowrite32(value, device_wrapper->base_addr + addr_offset)
 #define read_reg(addr_offset) 			ioread32(device_wrapper->base_addr + addr_offset)
-// TODO: potential bug fix?
-// #define write_reg(addr_offset, value) 	do { mb(); iowrite32(value, device_wrapper->base_addr + addr_offset); } while(0)
-// #define read_reg(addr_offset) 			({ mb(); ioread32(device_wrapper->base_addr + addr_offset); })
 
 // ----------------------------
 //     IP register offsets
@@ -398,9 +395,9 @@ static ssize_t axis_fifo_write(struct file *device_file, const char __user *buf,
 		return -EINVAL;	
 	}
 
-	if (words_to_write > device_wrapper->tx_fifo_depth - 4) {
+	if (words_to_write > device_wrapper->tx_fifo_depth) {
 		printkerr("tried to write more words [%u] than slots in the fifo buffer [%u]\n",
-					words_to_write, device_wrapper->tx_fifo_depth - 4);
+					words_to_write, device_wrapper->tx_fifo_depth);
 		return -EINVAL;
 	}
 
@@ -839,8 +836,6 @@ static int axis_fifo_probe(struct platform_device *pdev)
 
 	// map physical memory to kernel virtual address space
 	device_wrapper->base_addr = ioremap(device_wrapper->mem_start, device_wrapper->mem_end - device_wrapper->mem_start + 1);
-	// TODO: potential performance boost
-	//device_wrapper->base_addr = ioremap_wc(device_wrapper->mem_start, device_wrapper->mem_end - device_wrapper->mem_start + 1);
 
 	if (!device_wrapper->base_addr) {
 		printkerr("couldn't map physical memory\n");
@@ -907,7 +902,8 @@ static int axis_fifo_probe(struct platform_device *pdev)
 
 	// set device wrapper properties based on IP config
 	device_wrapper->rx_fifo_depth = rx_fifo_depth;
-	device_wrapper->tx_fifo_depth = tx_fifo_depth;
+	// since TDFV gets reset to fifo depth - 4
+	device_wrapper->tx_fifo_depth = tx_fifo_depth - 4;
 	device_wrapper->has_rx_fifo = use_rx_data;
 	device_wrapper->has_tx_fifo = use_tx_data;
 
