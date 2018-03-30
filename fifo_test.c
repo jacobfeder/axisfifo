@@ -26,7 +26,7 @@ pass in the number of words to write and the driver device file location(s)
 #define TIMEOUT 4
 
 // number of bytes to send in a packet (max is fifo depth * 4)
-#define MAX_PACKET_SIZE 2048
+#define MAX_PACKET_SIZE 512*4
 
 int main(int argc, char *argv[])
 {
@@ -65,51 +65,51 @@ int main(int argc, char *argv[])
 
 	// test error conditions
 
-	f = open(write_device_file, O_RDWR);
-	unsigned eight_bytes[2] = {0xDEADBEEF, 0xDEADBEEF};
+	// f = open(write_device_file, O_RDWR);
+	// unsigned eight_bytes[2] = {0xDEADBEEF, 0xDEADBEEF};
 
-	// read buffer too small test
-	bytes_written = write(f, &eight_bytes, 8);
-	if (bytes_written != 8) {
-		if (bytes_written == -1) {
-			printf("write failed with code %s\n", strerror(errno));
-		} else {
-			printf("write failed: only wrote %i bytes\n", bytes_written);
-		}
-		return -1;
-	}
-	bytes_read = read(f, NULL, 4);
-	if (bytes_read != -1 || errno != EINVAL) {
-		printf("didn't catch read buffer too small error (errno=%i)\n", errno);
-		return -1;
-	}
+	// // read buffer too small test
+	// bytes_written = write(f, &eight_bytes, 8);
+	// if (bytes_written != 8) {
+	// 	if (bytes_written == -1) {
+	// 		printf("write failed with code %s\n", strerror(errno));
+	// 	} else {
+	// 		printf("write failed: only wrote %i bytes\n", bytes_written);
+	// 	}
+	// 	return -1;
+	// }
+	// bytes_read = read(f, NULL, 4);
+	// if (bytes_read != -1 || errno != EINVAL) {
+	// 	printf("didn't catch read buffer too small error (errno=%i)\n", errno);
+	// 	return -1;
+	// }
 
-	// userland read pointer error test
-	bytes_written = write(f, &eight_bytes, 8);
-	if (bytes_written != 8) {
-		if (bytes_written == -1) {
-			printf("write failed with code %s\n", strerror(errno));
-		} else {
-			printf("write failed: only wrote %i bytes\n", bytes_written);
-		}
-		return -1;
-	}
-	bytes_read = read(f, NULL, 8);
-	if (bytes_read != -1 || errno != EFAULT) {
-		printf("didn't catch userland read pointer error (%s)\n", strerror(errno));
-		return -1;
-	}
+	// // userland read pointer error test
+	// bytes_written = write(f, &eight_bytes, 8);
+	// if (bytes_written != 8) {
+	// 	if (bytes_written == -1) {
+	// 		printf("write failed with code %s\n", strerror(errno));
+	// 	} else {
+	// 		printf("write failed: only wrote %i bytes\n", bytes_written);
+	// 	}
+	// 	return -1;
+	// }
+	// bytes_read = read(f, NULL, 8);
+	// if (bytes_read != -1 || errno != EFAULT) {
+	// 	printf("didn't catch userland read pointer error (%s)\n", strerror(errno));
+	// 	return -1;
+	// }
 
-	// userland write pointer error test
-	bytes_written = write(f, NULL, 8);
-	if (bytes_written != -1 || errno != EFAULT) {
-		printf("didn't catch userland write pointer (%s)\n", strerror(errno));
-		return -1;
-	}
+	// // userland write pointer error test
+	// bytes_written = write(f, NULL, 8);
+	// if (bytes_written != -1 || errno != EFAULT) {
+	// 	printf("didn't catch userland write pointer (%s)\n", strerror(errno));
+	// 	return -1;
+	// }
 
-	printf("error condition tests passed\n");
+	// printf("error condition tests passed\n");
 
-	close(f);
+	// close(f);
 
 	data_string = (char *)malloc(data_string_len);
 
@@ -138,7 +138,7 @@ int main(int argc, char *argv[])
 	if (pid == -1) {
 		printf("fork failed: %s\n", strerror(errno));
 		free(data_string);
-		exit(EXIT_FAILURE);
+		return EXIT_FAILURE;
 	}
 	else if (pid == 0) {
 		// reader (child) process
@@ -159,6 +159,9 @@ int main(int argc, char *argv[])
 		unsigned read_offset = 0;
 		unsigned bytes_remaining = data_string_len;
 		while (bytes_remaining) {
+
+			// randomize waits
+			//usleep(rand() % 10000);
 
 			// read from device until we get all the bytes sent or a timeout occurs
 			bytes_read = read(f, read_data, bytes_remaining);
@@ -214,6 +217,9 @@ int main(int argc, char *argv[])
 
 		unsigned write_packet_size;
 		while (bytes_remaining) {
+
+			// randomize waits
+			//usleep(rand() % 10000);
 
 			write_packet_size = ((rand() % MAX_PACKET_SIZE/4) + 1) * 4;
 			bytes_written = write(f, bytes_to_write, bytes_remaining > write_packet_size ? write_packet_size : bytes_remaining);

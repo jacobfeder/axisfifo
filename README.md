@@ -1,6 +1,4 @@
-# AXI-Stream FIFO
-Zynq SoC Linux kernel driver for Xilinx AXI-Stream FIFO IP
-
+# Zynq SoC Linux kernel driver for Xilinx AXI-Stream FIFO IP
 Supports only store-forward mode with a 32-bit AXI4-Lite interface. DOES NOT support
 - cut-through mode
 - AXI4 (non-lite)
@@ -35,11 +33,11 @@ close(f_wr);
 close(f_rd);
 ```
 
-Data can only be written and read in words (4 bytes).
+Data can only be written and read in multiples of words (4 bytes).
 
 You can also access the registers directly if you wish using sysfs. They are located in
 ```bash
-/sys/class/axis_fifo_class/axis_fifo<#>/
+/sys/class/axis_fifo<#>_class/axis_fifo<#>/
 ```
 For example, you can read the RDFO with
 ```bash

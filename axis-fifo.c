@@ -59,8 +59,13 @@ MODULE_DESCRIPTION("axis-fifo: interface to the Xilinx AXI-Stream FIFO v4.1 IP c
 // write buffer length in words
 #define WRITE_BUFF_SIZE 128
 
+// ms to wait before blocking read() timing out
+#define READ_TIMEOUT 1000
+// ms to wait before blocking write() timing out
+#define WRITE_TIMEOUT 1000
+
 // enable to turn on debugging messages
-//#define DEBUG
+#define DEBUG
 
 // Macro for printing debug messages inside driver callbacks (e.g. open/close/read/write)
 #ifdef DEBUG
@@ -75,9 +80,12 @@ MODULE_DESCRIPTION("axis-fifo: interface to the Xilinx AXI-Stream FIFO v4.1 IP c
 // convert milliseconds to kernel jiffies
 #define ms_to_jiffies(ms) ((HZ * ms) / 1000)
 
-// write to IP register
+// read/write IP register
 #define write_reg(addr_offset, value) 	iowrite32(value, device_wrapper->base_addr + addr_offset)
 #define read_reg(addr_offset) 			ioread32(device_wrapper->base_addr + addr_offset)
+// TODO: potential bug fix?
+// #define write_reg(addr_offset, value) 	do { mb(); iowrite32(value, device_wrapper->base_addr + addr_offset); } while(0)
+// #define read_reg(addr_offset) 			({ mb(); ioread32(device_wrapper->base_addr + addr_offset); })
 
 // ----------------------------
 //     IP register offsets
@@ -154,8 +162,12 @@ struct axis_fifo_local {
 	struct mutex write_mutex;
 	// wait queue for asynchronos read 
 	wait_queue_head_t read_queue;
+	// lock for reading waitqueue
+	spinlock_t read_queue_lock;
 	// wait queue for asynchronos write 
 	wait_queue_head_t write_queue;
+	// lock for writing waitqueue
+	spinlock_t write_queue_lock;
 	// write file flags
 	unsigned int write_flags;
 	// read file flags
@@ -173,9 +185,6 @@ struct axis_fifo_local {
 	struct class *driver_class;
 	// our char device
 	struct cdev char_device;
-
-	// flag indicating a fatal error has occured
-	int fatal;
 };
 
 // ----------------------------
@@ -292,11 +301,6 @@ static ssize_t axis_fifo_read(struct file *device_file, char __user *buf, size_t
 	int wait_ret;
 	u32 read_buff[READ_BUFF_SIZE];
 
-	if (device_wrapper->fatal) {
-		printkerr("fatal error before read\n");
-		return -EIO;
-	}
-
 	if (device_wrapper->read_flags & O_NONBLOCK) {
 		// opened in non-blocking mode
 		// return if there are no packets available
@@ -305,22 +309,26 @@ static ssize_t axis_fifo_read(struct file *device_file, char __user *buf, size_t
 		}
 	} else {
 		// opened in blocking mode
-		if (!read_reg(XLLF_RDFO_OFFSET)) {
-			// wait for a packet available interrupt (or timeout)
-			// if nothing is currently available
-			wait_ret = wait_event_interruptible_timeout(device_wrapper->read_queue,
-									read_reg(XLLF_RDFO_OFFSET), ms_to_jiffies(10));
-			if (device_wrapper->fatal) {
-				printkerr("fatal error after waking up to read\n");
-				return -EIO;
-			}
-			if (wait_ret == 0) {
-				// timeout occured
-				return 0;
-			} else if (wait_ret == -ERESTARTSYS) {
-				// signal received
-				return -ERESTARTSYS;
-			}
+
+		// wait for a packet available interrupt (or timeout)
+		// if nothing is currently available
+		spin_lock_irq(&device_wrapper->read_queue_lock);
+		wait_ret = wait_event_interruptible_lock_irq_timeout(device_wrapper->read_queue,
+						read_reg(XLLF_RDFO_OFFSET), device_wrapper->read_queue_lock, ms_to_jiffies(READ_TIMEOUT));
+		spin_unlock_irq(&device_wrapper->read_queue_lock);
+
+		if (wait_ret == 0) {
+			// timeout occured
+			printkdbg("read timeout\n");
+			return 0;
+		} else if (wait_ret > 0) {
+			// packet available
+		} else if (wait_ret == -ERESTARTSYS) {
+			// signal received
+			return -ERESTARTSYS;
+		} else {
+			printkerr("wait_event_interruptible_timeout() error in read (wait_ret=%i)\n", wait_ret);
+			return wait_ret;
 		}
 	}
 
@@ -378,11 +386,6 @@ static ssize_t axis_fifo_write(struct file *device_file, const char __user *buf,
 	int wait_ret;
 	u32 write_buff[WRITE_BUFF_SIZE];
 
-	if (device_wrapper->fatal) {
-		printkerr("fatal error before write\n");
-		return -EIO;
-	}
-
 	if (len % 4) {
 		printkerr("tried to send a packet that isn't word-aligned\n");
 		return -EINVAL;
@@ -395,9 +398,9 @@ static ssize_t axis_fifo_write(struct file *device_file, const char __user *buf,
 		return -EINVAL;	
 	}
 
-	if (words_to_write > device_wrapper->tx_fifo_depth) {
+	if (words_to_write > device_wrapper->tx_fifo_depth - 4) {
 		printkerr("tried to write more words [%u] than slots in the fifo buffer [%u]\n",
-					words_to_write, device_wrapper->tx_fifo_depth);
+					words_to_write, device_wrapper->tx_fifo_depth - 4);
 		return -EINVAL;
 	}
 
@@ -409,21 +412,25 @@ static ssize_t axis_fifo_write(struct file *device_file, const char __user *buf,
 		}
 	} else {
 		// opened in blocking mode
-		if (words_to_write > read_reg(XLLF_TDFV_OFFSET)) {
-			// wait for an interrupt (or timeout) if there isn't currently enough room in the fifo
-			wait_ret = wait_event_interruptible_timeout(device_wrapper->write_queue,
-									words_to_write <= read_reg(XLLF_TDFV_OFFSET), ms_to_jiffies(10));
-			if (device_wrapper->fatal) {
-				printkerr("fatal error after waking up to write\n");
-				return -EIO;
-			}
-			if (wait_ret == 0) {
-				// timeout occured
-				return 0;
-			} else if (wait_ret == -ERESTARTSYS) {
-				// signal received
-				return -ERESTARTSYS;
-			}	
+
+		// wait for an interrupt (or timeout) if there isn't currently enough room in the fifo
+		spin_lock_irq(&device_wrapper->write_queue_lock);
+		wait_ret = wait_event_interruptible_lock_irq_timeout(device_wrapper->write_queue,
+						read_reg(XLLF_TDFV_OFFSET) >= words_to_write, device_wrapper->write_queue_lock, ms_to_jiffies(WRITE_TIMEOUT));
+		spin_unlock_irq(&device_wrapper->write_queue_lock);
+
+		if (wait_ret == 0) {
+			// timeout occured
+			printkdbg("write timeout\n");
+			return 0;
+		} else if (wait_ret > 0) {
+			// packet available
+		} else if (wait_ret == -ERESTARTSYS) {
+			// signal received
+			return -ERESTARTSYS;
+		} else {
+			printkerr("wait_event_interruptible_timeout() error in write (wait_ret=%i)\n", wait_ret);
+			return wait_ret;
 		}
 	}
 
@@ -508,15 +515,11 @@ static irqreturn_t axis_fifo_irq(int irq, void *dw)
 			// receive fifo under-read error interrupt
 			printkerr("receive under-read interrupt\n");
 
-			device_wrapper->fatal = 1;
-
 			// clear interrupt
 			write_reg(XLLF_ISR_OFFSET, XLLF_INT_RPURE_MASK & XLLF_INT_ALL_MASK);
 		} else if (pending_interrupts & XLLF_INT_RPORE_MASK) {
 			// receive over-read error interrupt
 			printkerr("receive over-read interrupt\n");
-
-			device_wrapper->fatal = 1;
 
 			// clear interrupt
 			write_reg(XLLF_ISR_OFFSET, XLLF_INT_RPORE_MASK & XLLF_INT_ALL_MASK);
@@ -524,23 +527,17 @@ static irqreturn_t axis_fifo_irq(int irq, void *dw)
 			// receive underrun error interrupt
 			printkerr("receive underrun error interrupt\n");
 			
-			device_wrapper->fatal = 1;
-
 			// clear interrupt
 			write_reg(XLLF_ISR_OFFSET, XLLF_INT_RPUE_MASK & XLLF_INT_ALL_MASK);
 		} else if (pending_interrupts & XLLF_INT_TPOE_MASK) {
 			// transmit overrun error interrupt
 			printkerr("transmit overrun error interrupt\n");
-			
-			device_wrapper->fatal = 1;
 
 			// clear interrupt
 			write_reg(XLLF_ISR_OFFSET, XLLF_INT_TPOE_MASK & XLLF_INT_ALL_MASK);
 		} else if (pending_interrupts & XLLF_INT_TSE_MASK) {
 			// transmit length mismatch error interrupt
 			printkerr("transmit length mismatch error interrupt\n");
-			
-			device_wrapper->fatal = 1;
 
 			// clear interrupt
 			write_reg(XLLF_ISR_OFFSET, XLLF_INT_TSE_MASK & XLLF_INT_ALL_MASK);
@@ -803,9 +800,14 @@ static int axis_fifo_probe(struct platform_device *pdev)
 
 	printkdbg("initialized queues\n");
 
+	spin_lock_init(&device_wrapper->read_queue_lock);
+	spin_lock_init(&device_wrapper->write_queue_lock);
+
+	printkdbg("initialized spinlocks\n");
+
 	// create unique device and class names
-	sprintf(device_name, DRIVER_NAME "%i", device_wrapper->id);
-	sprintf(class_name, DRIVER_NAME "%i_class", device_wrapper->id);
+	snprintf(device_name, 32, DRIVER_NAME "%i", device_wrapper->id);
+	snprintf(class_name, 32, DRIVER_NAME "%i_class", device_wrapper->id);
 
 	printkdbg("device name [%s] class name [%s]\n", device_name, class_name);
 
@@ -837,6 +839,9 @@ static int axis_fifo_probe(struct platform_device *pdev)
 
 	// map physical memory to kernel virtual address space
 	device_wrapper->base_addr = ioremap(device_wrapper->mem_start, device_wrapper->mem_end - device_wrapper->mem_start + 1);
+	// TODO: potential performance boost
+	//device_wrapper->base_addr = ioremap_wc(device_wrapper->mem_start, device_wrapper->mem_end - device_wrapper->mem_start + 1);
+
 	if (!device_wrapper->base_addr) {
 		printkerr("couldn't map physical memory\n");
 		rc = -EIO;
@@ -905,8 +910,6 @@ static int axis_fifo_probe(struct platform_device *pdev)
 	device_wrapper->tx_fifo_depth = tx_fifo_depth;
 	device_wrapper->has_rx_fifo = use_rx_data;
 	device_wrapper->has_tx_fifo = use_tx_data;
-	
-	device_wrapper->fatal = 0;
 
 	// reset IP core
 	write_reg(XLLF_SRR_OFFSET, XLLF_SRR_RESET_MASK);
