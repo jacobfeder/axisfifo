@@ -28,7 +28,7 @@ int f_rd = open("/dev/axis_fifo0", O_RDONLY);
 // writes a packet of 12 bytes (3 words)
 write(f_wr, &write_buff, 12);
 
-// returns 12 bytes (assuming the packet is received in hardware at this point)
+// returns 12 bytes
 ssize_t bytes_read = read(f_rd, &read_buff, 100);
 
 close(f_wr);
