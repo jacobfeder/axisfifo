@@ -43,13 +43,13 @@ By default, read() and write() will block for one second before timing out (this
 int f = open("/dev/axis_fifo0", O_RDWR | O_NONBLOCK);
 ```
 
+See fifo_test.c for more detailed usage code and to test functionality/throughput of your FIFO.
+
 # Sysfs direct register access
 
 You can access the IP registers directly if you wish using sysfs. They are located in  
 `/sys/class/axis_fifo<#>_class/axis_fifo<#>/`  
 For example, you can read the RDFO with  
 `cat /sys/class/axis_fifo<#>_class/axis_fifo<#>/rdfo | hexdump -C`  
-or write to the fifo/TDFR with  
+or write to the fifo/TDFD with  
 `echo -n -e '\xDE\xAD\xBE\xEF' > /sys/class/axis_fifo<#>_class/axis_fifo<#>/tdfd`.
-
-You can use fifo_test.c to test functionality/throughput of your FIFO.
