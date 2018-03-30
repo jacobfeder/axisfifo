@@ -65,51 +65,51 @@ int main(int argc, char *argv[])
 
 	// test error conditions
 
-	// f = open(write_device_file, O_RDWR);
-	// unsigned eight_bytes[2] = {0xDEADBEEF, 0xDEADBEEF};
+	f = open(write_device_file, O_RDWR);
+	unsigned eight_bytes[2] = {0xDEADBEEF, 0xDEADBEEF};
 
-	// // read buffer too small test
-	// bytes_written = write(f, &eight_bytes, 8);
-	// if (bytes_written != 8) {
-	// 	if (bytes_written == -1) {
-	// 		printf("write failed with code %s\n", strerror(errno));
-	// 	} else {
-	// 		printf("write failed: only wrote %i bytes\n", bytes_written);
-	// 	}
-	// 	return -1;
-	// }
-	// bytes_read = read(f, NULL, 4);
-	// if (bytes_read != -1 || errno != EINVAL) {
-	// 	printf("didn't catch read buffer too small error (errno=%i)\n", errno);
-	// 	return -1;
-	// }
+	// read buffer too small test
+	bytes_written = write(f, &eight_bytes, 8);
+	if (bytes_written != 8) {
+		if (bytes_written == -1) {
+			printf("write failed with code %s\n", strerror(errno));
+		} else {
+			printf("write failed: only wrote %i bytes\n", bytes_written);
+		}
+		return -1;
+	}
+	bytes_read = read(f, NULL, 4);
+	if (bytes_read != -1 || errno != EINVAL) {
+		printf("didn't catch read buffer too small error (errno=%i)\n", errno);
+		return -1;
+	}
 
-	// // userland read pointer error test
-	// bytes_written = write(f, &eight_bytes, 8);
-	// if (bytes_written != 8) {
-	// 	if (bytes_written == -1) {
-	// 		printf("write failed with code %s\n", strerror(errno));
-	// 	} else {
-	// 		printf("write failed: only wrote %i bytes\n", bytes_written);
-	// 	}
-	// 	return -1;
-	// }
-	// bytes_read = read(f, NULL, 8);
-	// if (bytes_read != -1 || errno != EFAULT) {
-	// 	printf("didn't catch userland read pointer error (%s)\n", strerror(errno));
-	// 	return -1;
-	// }
+	// userland read pointer error test
+	bytes_written = write(f, &eight_bytes, 8);
+	if (bytes_written != 8) {
+		if (bytes_written == -1) {
+			printf("write failed with code %s\n", strerror(errno));
+		} else {
+			printf("write failed: only wrote %i bytes\n", bytes_written);
+		}
+		return -1;
+	}
+	bytes_read = read(f, NULL, 8);
+	if (bytes_read != -1 || errno != EFAULT) {
+		printf("didn't catch userland read pointer error (%s)\n", strerror(errno));
+		return -1;
+	}
 
-	// // userland write pointer error test
-	// bytes_written = write(f, NULL, 8);
-	// if (bytes_written != -1 || errno != EFAULT) {
-	// 	printf("didn't catch userland write pointer (%s)\n", strerror(errno));
-	// 	return -1;
-	// }
+	// userland write pointer error test
+	bytes_written = write(f, NULL, 8);
+	if (bytes_written != -1 || errno != EFAULT) {
+		printf("didn't catch userland write pointer (%s)\n", strerror(errno));
+		return -1;
+	}
 
-	// printf("error condition tests passed\n");
+	printf("error condition tests passed\n");
 
-	// close(f);
+	close(f);
 
 	data_string = (char *)malloc(data_string_len);
 

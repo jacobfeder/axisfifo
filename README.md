@@ -5,14 +5,14 @@ Supports only store-forward mode with a 32-bit AXI4-Lite interface. DOES NOT sup
 
 You should find a character device in /dev (e.g. /dev/axis_fifo0) for each AXI-Stream fifo you create in your hardware. The device can be read and written to like a normal file.
 
-For example, you can write a packet to your fifo with
-```bash
-echo -n -e '\xDE\xAD\xBE\xEF' > /dev/axis_fifo<#>
-```
-and read from it with
-```bash
-cat /dev/axis_fifo<#> | hexdump -C
-```
+# Quick 'n dirty
+
+To quickly test things, you can write a packet to your fifo from the command line with  
+`echo -n -e '\xDE\xAD\xBE\xEF' > /dev/axis_fifo<#>`  
+and read from it with  
+`cat /dev/axis_fifo<#> | hexdump -C`.
+
+# API
 
 When you write data to the fifo, the block of data is written as a packet as dictated by the length passed to write. When you call read(), a single packet is returned regardless of how many bytes were requested.
 
@@ -20,6 +20,8 @@ For example:
 ```c
 // assuming the fifo is configured in loopback mode in hardware
 // e.g. axis tx interface feeds back into axis rx interface
+// note that in this case a single file descriptor could be opened for both read and write,
+// but separate read/write descriptors are used for illustrative purposes
 int f_wr = open("/dev/axis_fifo0", O_WRONLY);
 int f_rd = open("/dev/axis_fifo0", O_RDONLY);
 
@@ -35,17 +37,19 @@ close(f_rd);
 
 Data can only be written and read in multiples of words (4 bytes).
 
-You can also access the registers directly if you wish using sysfs. They are located in
-```bash
-/sys/class/axis_fifo<#>_class/axis_fifo<#>/
+By default, read() and write() will block for one second before timing out (this can be changed by timeout #defines). You can also make non-blocking read/writes by opening the file with the O_NONBLOCK OS flag set which will return immediately:
+
+```c
+int f = open("/dev/axis_fifo0", O_RDWR | O_NONBLOCK);
 ```
-For example, you can read the RDFO with
-```bash
-cat /sys/class/axis_fifo<#>_class/axis_fifo<#>/rdfo | hexdump -C
-```
-or write to the fifo/TDFR with
-```bash
-echo -n -e '\xDE\xAD\xBE\xEF' > /sys/class/axisfifo<#>_class/axisfifo<#>/tdfd
-```
+
+# Sysfs direct register access
+
+You can access the IP registers directly if you wish using sysfs. They are located in  
+`/sys/class/axis_fifo<#>_class/axis_fifo<#>/`  
+For example, you can read the RDFO with  
+`cat /sys/class/axis_fifo<#>_class/axis_fifo<#>/rdfo | hexdump -C`  
+or write to the fifo/TDFR with  
+`echo -n -e '\xDE\xAD\xBE\xEF' > /sys/class/axis_fifo<#>_class/axis_fifo<#>/tdfd`.
 
 You can use fifo_test.c to test functionality/throughput of your FIFO.

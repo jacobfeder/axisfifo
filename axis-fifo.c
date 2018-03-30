@@ -65,7 +65,7 @@ MODULE_DESCRIPTION("axis-fifo: interface to the Xilinx AXI-Stream FIFO v4.1 IP c
 #define WRITE_TIMEOUT 1000
 
 // enable to turn on debugging messages
-//#define DEBUG
+#define DEBUG
 
 // Macro for printing debug messages inside driver callbacks (e.g. open/close/read/write)
 #ifdef DEBUG
