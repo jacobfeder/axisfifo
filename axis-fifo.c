@@ -27,6 +27,7 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/io.h>
+#include <linux/moduleparam.h>
 #include <linux/interrupt.h>
 #include <linux/mutex.h>
 #include <linux/wait.h>
@@ -41,16 +42,19 @@
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
 
-// ----------------------------
-//          defines
-// ----------------------------
-
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Jacob Feder");
 MODULE_DESCRIPTION("axis-fifo: interface to the Xilinx AXI-Stream FIFO v4.1 IP core.\n" \
 					"Supports only store-forward mode with a 32-bit AXI4-Lite interface. DOES NOT support\n" \
 					"- cut-through mode\n" \
 					"- AXI4 (non-lite)");
+
+// ----------------------------
+//          defines
+// ----------------------------
+
+// enable to turn on debugging messages
+#define DEBUG
 
 #define DRIVER_NAME "axis_fifo"
 
@@ -59,13 +63,19 @@ MODULE_DESCRIPTION("axis-fifo: interface to the Xilinx AXI-Stream FIFO v4.1 IP c
 // write buffer length in words
 #define WRITE_BUFF_SIZE 128
 
-// ms to wait before blocking read() timing out
-#define READ_TIMEOUT 1000
-// ms to wait before blocking write() timing out
-#define WRITE_TIMEOUT 1000
+// read/write IP register
+#define write_reg(addr_offset, value) 	iowrite32(value, device_wrapper->base_addr + addr_offset)
+#define read_reg(addr_offset) 			ioread32(device_wrapper->base_addr + addr_offset)
 
-// enable to turn on debugging messages
-#define DEBUG
+// Macro for reseting IP core
+#define reset_ip_core() write_reg(XLLF_SRR_OFFSET, XLLF_SRR_RESET_MASK);						\
+						write_reg(XLLF_TDFR_OFFSET, XLLF_TDFR_RESET_MASK); 						\
+						write_reg(XLLF_RDFR_OFFSET, XLLF_RDFR_RESET_MASK);						\
+						write_reg(XLLF_IER_OFFSET, XLLF_INT_TC_MASK | XLLF_INT_RC_MASK |		\
+												   XLLF_INT_RPURE_MASK | XLLF_INT_RPORE_MASK |	\
+												   XLLF_INT_RPUE_MASK | XLLF_INT_TPOE_MASK |	\
+												   XLLF_INT_TSE_MASK);							\
+						write_reg(XLLF_ISR_OFFSET, XLLF_INT_ALL_MASK)
 
 // Macro for printing debug messages inside driver callbacks (e.g. open/close/read/write)
 #ifdef DEBUG
@@ -77,12 +87,9 @@ MODULE_DESCRIPTION("axis-fifo: interface to the Xilinx AXI-Stream FIFO v4.1 IP c
 // Macro for printing error messages inside driver callbacks (e.g. open/close/read/write)
 #define printkerr(fmt, ...) printk(KERN_ERR "%s %u: " fmt, DRIVER_NAME, device_wrapper->id, ##__VA_ARGS__)
 
+
 // convert milliseconds to kernel jiffies
 #define ms_to_jiffies(ms) ((HZ * ms) / 1000)
-
-// read/write IP register
-#define write_reg(addr_offset, value) 	iowrite32(value, device_wrapper->base_addr + addr_offset)
-#define read_reg(addr_offset) 			ioread32(device_wrapper->base_addr + addr_offset)
 
 // ----------------------------
 //     IP register offsets
@@ -193,6 +200,11 @@ static unsigned num_devices = 0;
 // mutex for num_devices
 static struct mutex num_devices_mutex;
 
+// ms to wait before blocking read() times out
+static long read_timeout = 1000;
+// ms to wait before blocking write() times out
+static long write_timeout = 1000;
+
 // ----------------------------
 //    function declarations
 // ----------------------------
@@ -233,6 +245,14 @@ static void __exit axis_fifo_exit(void);
 //     register w/ kernel
 // ----------------------------
 
+// command-line arguments
+module_param(read_timeout, long, S_IRUGO);
+MODULE_PARM_DESC(read_timeout, "ms to wait before blocking read() timing out; \
+								set to -1 for no timeout");
+module_param(write_timeout, long, S_IRUGO);
+MODULE_PARM_DESC(write_timeout, "ms to wait before blocking write() timing out; \
+								 set to -1 for no timeout");
+
 // file operations
 static struct file_operations fops = {
 	.owner = THIS_MODULE,
@@ -262,21 +282,21 @@ static struct platform_driver axis_fifo_driver = {
 	.remove		= axis_fifo_remove,
 };
 
-static DEVICE_ATTR(isr,  S_IRUSR | S_IWUSR, sysfs_read_isr, sysfs_write_isr);
-static DEVICE_ATTR(ier,  S_IRUSR | S_IWUSR, sysfs_read_ier, sysfs_write_ier);
+static DEVICE_ATTR(isr, S_IRUSR | S_IRGRP | S_IWUSR | S_IWGRP, sysfs_read_isr, sysfs_write_isr);
+static DEVICE_ATTR(ier, S_IRUSR | S_IRGRP | S_IWUSR | S_IWGRP, sysfs_read_ier, sysfs_write_ier);
 
-static DEVICE_ATTR(tdfr, S_IWUSR, NULL, sysfs_write_tdfr);
-static DEVICE_ATTR(tdfv, S_IRUSR, sysfs_read_tdfv, NULL);
-static DEVICE_ATTR(tdfd, S_IWUSR, NULL, sysfs_write_tdfd);
-static DEVICE_ATTR(tlr,  S_IWUSR, NULL, sysfs_write_tlr);
+static DEVICE_ATTR(tdfr, S_IWUSR | S_IWGRP, NULL, sysfs_write_tdfr);
+static DEVICE_ATTR(tdfv, S_IRUSR | S_IRGRP, sysfs_read_tdfv, NULL);
+static DEVICE_ATTR(tdfd, S_IWUSR | S_IWGRP, NULL, sysfs_write_tdfd);
+static DEVICE_ATTR(tlr,  S_IWUSR | S_IWGRP, NULL, sysfs_write_tlr);
 
-static DEVICE_ATTR(rdfr, S_IWUSR, NULL, sysfs_write_rdfr);
-static DEVICE_ATTR(rdfo, S_IRUSR, sysfs_read_rdfo, NULL);
-static DEVICE_ATTR(rdfd, S_IRUSR, sysfs_read_rdfd, NULL);
-static DEVICE_ATTR(rlr,  S_IRUSR, sysfs_read_rlr, NULL);
-static DEVICE_ATTR(srr,  S_IWUSR, NULL, sysfs_write_srr);
-static DEVICE_ATTR(tdr,  S_IWUSR, NULL, sysfs_write_tdr);
-static DEVICE_ATTR(rdr,  S_IRUSR, sysfs_read_rdr, NULL);
+static DEVICE_ATTR(rdfr, S_IWUSR | S_IWGRP, NULL, sysfs_write_rdfr);
+static DEVICE_ATTR(rdfo, S_IRUSR | S_IRGRP, sysfs_read_rdfo, NULL);
+static DEVICE_ATTR(rdfd, S_IRUSR | S_IRGRP, sysfs_read_rdfd, NULL);
+static DEVICE_ATTR(rlr,  S_IRUSR | S_IRGRP, sysfs_read_rlr, NULL);
+static DEVICE_ATTR(srr,  S_IWUSR | S_IWGRP, NULL, sysfs_write_srr);
+static DEVICE_ATTR(tdr,  S_IWUSR | S_IWGRP, NULL, sysfs_write_tdr);
+static DEVICE_ATTR(rdr,  S_IRUSR | S_IRGRP, sysfs_read_rdr, NULL);
 
 module_init(axis_fifo_init);
 module_exit(axis_fifo_exit);
@@ -307,16 +327,20 @@ static ssize_t axis_fifo_read(struct file *device_file, char __user *buf, size_t
 	} else {
 		// opened in blocking mode
 
-		// wait for a packet available interrupt (or timeout)
-		// if nothing is currently available
+		// wait for a packet available interrupt (or timeout) if nothing is currently available
 		spin_lock_irq(&device_wrapper->read_queue_lock);
-		wait_ret = wait_event_interruptible_lock_irq_timeout(device_wrapper->read_queue,
-						read_reg(XLLF_RDFO_OFFSET), device_wrapper->read_queue_lock, ms_to_jiffies(READ_TIMEOUT));
+		if (read_timeout < 0) {
+			wait_ret = wait_event_interruptible_lock_irq_timeout(device_wrapper->read_queue,
+				read_reg(XLLF_RDFO_OFFSET), device_wrapper->read_queue_lock, MAX_SCHEDULE_TIMEOUT);
+		} else {
+			wait_ret = wait_event_interruptible_lock_irq_timeout(device_wrapper->read_queue,
+				read_reg(XLLF_RDFO_OFFSET), device_wrapper->read_queue_lock, ms_to_jiffies(read_timeout));
+		}
 		spin_unlock_irq(&device_wrapper->read_queue_lock);
 
 		if (wait_ret == 0) {
 			// timeout occured
-			printkdbg("read timeout\n");
+			printkdbg("read timeout, rdfo %i tdfv %i\n", read_reg(XLLF_RDFO_OFFSET), read_reg(XLLF_TDFV_OFFSET));
 			return 0;
 		} else if (wait_ret > 0) {
 			// packet available
@@ -332,23 +356,20 @@ static ssize_t axis_fifo_read(struct file *device_file, char __user *buf, size_t
 	bytes_available = read_reg(XLLF_RLR_OFFSET);
 	if (!bytes_available) {
 		printkerr("received a packet of length 0 - fifo core will be reset\n");
-		// reset IP core
-		write_reg(XLLF_SRR_OFFSET, XLLF_SRR_RESET_MASK);
+		reset_ip_core();
 		return -EIO;
 	}
 
 	if (bytes_available > len) {
-		printkerr("user read buffer too small (available=%u len=%u) - fifo core will be reset\n", bytes_available, len);
-		// reset IP core
-		write_reg(XLLF_SRR_OFFSET, XLLF_SRR_RESET_MASK);
+		printkerr("user read buffer too small (available bytes=%u user buffer bytes=%u) - fifo core will be reset\n", bytes_available, len);
+		reset_ip_core();
 		return -EINVAL;
 	}
 
 	if (bytes_available % 4) {
 		// this probably can't happen unless IP registers were previously mishandled
 		printkerr("received a packet that isn't word-aligned - fifo core will be reset\n");
-		// reset IP core
-		write_reg(XLLF_SRR_OFFSET, XLLF_SRR_RESET_MASK);
+		reset_ip_core();
 		return -ENOSYS;
 	}
 
@@ -361,9 +382,9 @@ static ssize_t axis_fifo_read(struct file *device_file, char __user *buf, size_t
 		read_buff[buff_word] = read_reg(XLLF_RDFD_OFFSET);
 		if ((buff_word == READ_BUFF_SIZE - 1) || (word == words_available - 1)) {
 			if (copy_to_user(buf + (word - buff_word)*4, read_buff, (buff_word + 1)*4)) {
+				// this occurs if the user passes an invalid pointer
 				printkerr("couldn't copy data to userspace buffer - fifo core will be reset\n");
-				// reset IP core
-				write_reg(XLLF_SRR_OFFSET, XLLF_SRR_RESET_MASK);
+				reset_ip_core();
 				return -EFAULT;
 			}
 		}
@@ -412,13 +433,21 @@ static ssize_t axis_fifo_write(struct file *device_file, const char __user *buf,
 
 		// wait for an interrupt (or timeout) if there isn't currently enough room in the fifo
 		spin_lock_irq(&device_wrapper->write_queue_lock);
-		wait_ret = wait_event_interruptible_lock_irq_timeout(device_wrapper->write_queue,
-						read_reg(XLLF_TDFV_OFFSET) >= words_to_write, device_wrapper->write_queue_lock, ms_to_jiffies(WRITE_TIMEOUT));
+		if (write_timeout < 0) {
+			wait_ret = wait_event_interruptible_lock_irq_timeout(device_wrapper->write_queue,
+				read_reg(XLLF_TDFV_OFFSET) >= words_to_write, device_wrapper->write_queue_lock, MAX_SCHEDULE_TIMEOUT);
+		} else {
+			wait_ret = wait_event_interruptible_lock_irq_timeout(device_wrapper->write_queue,
+				read_reg(XLLF_TDFV_OFFSET) >= words_to_write, device_wrapper->write_queue_lock, ms_to_jiffies(write_timeout));
+		}
 		spin_unlock_irq(&device_wrapper->write_queue_lock);
+		
+		wait_ret = wait_event_interruptible_timeout(device_wrapper->write_queue,
+			read_reg(XLLF_TDFV_OFFSET) >= words_to_write, ms_to_jiffies(write_timeout));
 
 		if (wait_ret == 0) {
 			// timeout occured
-			printkdbg("write timeout\n");
+			printkdbg("write timeout, rdfo %i tdfv %i\n", read_reg(XLLF_RDFO_OFFSET), read_reg(XLLF_TDFV_OFFSET));
 			return 0;
 		} else if (wait_ret > 0) {
 			// packet available
@@ -438,9 +467,9 @@ static ssize_t axis_fifo_write(struct file *device_file, const char __user *buf,
 		if (buff_word == 0) {
 			if (copy_from_user(write_buff, buf + word*4, word <= words_to_write - 
 				WRITE_BUFF_SIZE ? WRITE_BUFF_SIZE*4 : (words_to_write % WRITE_BUFF_SIZE)*4)) {
+				// this occurs if the user passes an invalid pointer
 				printkerr("couldn't copy data from userspace buffer - fifo core will be reset\n");
-				// reset IP core
-				write_reg(XLLF_SRR_OFFSET, XLLF_SRR_RESET_MASK);
+				reset_ip_core();
 				return -EFAULT;
 			}
 		}
@@ -907,14 +936,7 @@ static int axis_fifo_probe(struct platform_device *pdev)
 	device_wrapper->has_rx_fifo = use_rx_data;
 	device_wrapper->has_tx_fifo = use_tx_data;
 
-	// reset IP core
-	write_reg(XLLF_SRR_OFFSET, XLLF_SRR_RESET_MASK);
-	// enable interrupts
-	write_reg(XLLF_IER_OFFSET, XLLF_INT_TC_MASK | XLLF_INT_RC_MASK | XLLF_INT_RPURE_MASK |
-							   XLLF_INT_RPORE_MASK | XLLF_INT_RPUE_MASK | XLLF_INT_TPOE_MASK |
-							   XLLF_INT_TSE_MASK);
-	// clear interrupts
-	write_reg(XLLF_ISR_OFFSET, XLLF_INT_ALL_MASK);
+	reset_ip_core();
 
 	// ----------------------------
 	//    init device interrupts
@@ -1126,7 +1148,8 @@ static int axis_fifo_remove(struct platform_device *pdev)
 // called by the kernel when this module is loaded
 static int __init axis_fifo_init(void)
 {
-	printk(KERN_INFO "axis-fifo driver init\n");
+	printk(KERN_INFO "axis-fifo driver loaded with parameters read_timeout = %x, "
+					 "write_timeout = %x\n", read_timeout, write_timeout);
 	mutex_init(&num_devices_mutex);
 	num_devices = 0;
 	return platform_driver_register(&axis_fifo_driver);

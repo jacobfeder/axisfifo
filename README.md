@@ -37,7 +37,15 @@ close(f_rd);
 
 Data can only be written and read in multiples of words (4 bytes).
 
-By default, read() and write() will block for one second before timing out (this can be changed by timeout #defines). You can also make non-blocking read/writes by opening the file with the O_NONBLOCK OS flag set which will cause read() and write() to return immediately:
+By default, read() and write() will block for one second before timing out. You can change this behavior by loading the module with command line arguments "read_timeout" and "write_timeout" (in milliseconds):
+
+`insmod /lib/modules/4.9.0-xilinx-v2017.4/extra/axis-fifo.ko read_timeout=100 write_timeout=5000`
+
+You can set "read_timeout" / "write_timeout" to a negative value if you want read() / write() to block indefinitely:
+
+`insmod /lib/modules/4.9.0-xilinx-v2017.4/extra/axis-fifo.ko read_timeout=-1 write_timeout=-1`
+
+You can also make non-blocking reads/writes by opening the file with the O_NONBLOCK flag set which will cause read() and write() to return immediately:
 
 ```c
 int f = open("/dev/axis_fifo0", O_RDWR | O_NONBLOCK);
