@@ -26,7 +26,7 @@ pass in the number of words to write and the driver device file location(s)
 #define TIMEOUT 4
 
 // number of bytes to send in a packet (max is fifo depth * 4)
-#define MAX_PACKET_SIZE 8096
+#define MAX_PACKET_SIZE 8196
 
 int main(int argc, char *argv[])
 {
@@ -72,15 +72,15 @@ int main(int argc, char *argv[])
 	bytes_written = write(f, &eight_bytes, 8);
 	if (bytes_written != 8) {
 		if (bytes_written == -1) {
-			printf("write failed with code %s\n", strerror(errno));
+			printf("ERROR: write failed with code %s\n", strerror(errno));
 		} else {
-			printf("write failed: only wrote %i bytes\n", bytes_written);
+			printf("ERROR: write failed - only wrote %i bytes\n", bytes_written);
 		}
 		return -1;
 	}
 	bytes_read = read(f, NULL, 4);
 	if (bytes_read != -1 || errno != EINVAL) {
-		printf("didn't catch read buffer too small error (errno=%i)\n", errno);
+		printf("ERROR: didn't catch read buffer too small error (errno=%i)\n", errno);
 		return -1;
 	}
 
@@ -88,22 +88,43 @@ int main(int argc, char *argv[])
 	bytes_written = write(f, &eight_bytes, 8);
 	if (bytes_written != 8) {
 		if (bytes_written == -1) {
-			printf("write failed with code %s\n", strerror(errno));
+			printf("ERROR: write failed with code %s\n", strerror(errno));
 		} else {
-			printf("write failed: only wrote %i bytes\n", bytes_written);
+			printf("ERROR: write failed - only wrote %i bytes\n", bytes_written);
 		}
 		return -1;
 	}
 	bytes_read = read(f, NULL, 8);
 	if (bytes_read != -1 || errno != EFAULT) {
-		printf("didn't catch userland read pointer error (%s)\n", strerror(errno));
+		printf("ERROR: didn't catch userland read pointer error (%s)\n", strerror(errno));
 		return -1;
 	}
 
 	// userland write pointer error test
 	bytes_written = write(f, NULL, 8);
 	if (bytes_written != -1 || errno != EFAULT) {
-		printf("didn't catch userland write pointer (%s)\n", strerror(errno));
+		printf("ERROR: didn't catch userland write pointer error (%s)\n", strerror(errno));
+		return -1;
+	}
+
+	// write 0-length packet
+	bytes_written = write(f, &eight_bytes, 0);
+	if (bytes_written != -1 || errno != EINVAL) {
+		printf("ERROR: didn't catch 0-length packet write error (%s)\n", strerror(errno));
+		return -1;
+	}
+
+	// write misaligned packet
+	bytes_written = write(f, &eight_bytes, 7);
+	if (bytes_written != -1 || errno != EINVAL) {
+		printf("ERROR: didn't catch misaligned packet write error (%s)\n", strerror(errno));
+		return -1;
+	}
+
+	// write packet larger than fifo size
+	bytes_written = write(f, &eight_bytes, 5000000);
+	if (bytes_written != -1 || errno != EINVAL) {
+		printf("ERROR: didn't catch oversized packet write error (%s)\n", strerror(errno));
 		return -1;
 	}
 

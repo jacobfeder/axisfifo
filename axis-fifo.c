@@ -87,7 +87,6 @@ MODULE_DESCRIPTION("axis-fifo: interface to the Xilinx AXI-Stream FIFO v4.1 IP c
 // Macro for printing error messages inside driver callbacks (e.g. open/close/read/write)
 #define printkerr(fmt, ...) printk(KERN_ERR "%s %u: " fmt, DRIVER_NAME, device_wrapper->id, ##__VA_ARGS__)
 
-
 // convert milliseconds to kernel jiffies
 #define ms_to_jiffies(ms) ((HZ * ms) / 1000)
 
@@ -340,7 +339,7 @@ static ssize_t axis_fifo_read(struct file *device_file, char __user *buf, size_t
 
 		if (wait_ret == 0) {
 			// timeout occured
-			printkdbg("read timeout, rdfo %i tdfv %i\n", read_reg(XLLF_RDFO_OFFSET), read_reg(XLLF_TDFV_OFFSET));
+			printkdbg("read timeout");
 			return 0;
 		} else if (wait_ret > 0) {
 			// packet available
@@ -442,12 +441,9 @@ static ssize_t axis_fifo_write(struct file *device_file, const char __user *buf,
 		}
 		spin_unlock_irq(&device_wrapper->write_queue_lock);
 		
-		wait_ret = wait_event_interruptible_timeout(device_wrapper->write_queue,
-			read_reg(XLLF_TDFV_OFFSET) >= words_to_write, ms_to_jiffies(write_timeout));
-
 		if (wait_ret == 0) {
 			// timeout occured
-			printkdbg("write timeout, rdfo %i tdfv %i\n", read_reg(XLLF_RDFO_OFFSET), read_reg(XLLF_TDFV_OFFSET));
+			printkdbg("write timeout\n");
 			return 0;
 		} else if (wait_ret > 0) {
 			// packet available
@@ -931,7 +927,7 @@ static int axis_fifo_probe(struct platform_device *pdev)
 
 	// set device wrapper properties based on IP config
 	device_wrapper->rx_fifo_depth = rx_fifo_depth;
-	// since TDFV gets reset to fifo depth - 4
+	// TDFV gets set to fifo depth - 4
 	device_wrapper->tx_fifo_depth = tx_fifo_depth - 4;
 	device_wrapper->has_rx_fifo = use_rx_data;
 	device_wrapper->has_tx_fifo = use_tx_data;
