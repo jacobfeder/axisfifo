@@ -68,67 +68,71 @@ int main(int argc, char *argv[])
 	f = open(write_device_file, O_RDWR);
 	unsigned eight_bytes[2] = {0xDEADBEEF, 0xDEADBEEF};
 
+	printf("TESTING error conditions...\n");
+
 	// read buffer too small test
-	bytes_written = write(f, &eight_bytes, 8);
+	bytes_written = write(f, eight_bytes, 8);
 	if (bytes_written != 8) {
 		if (bytes_written == -1) {
-			printf("ERROR: write failed with code %s\n", strerror(errno));
+			printf("error condition tests FAILED: write failed with code %s\n", strerror(errno));
 		} else {
-			printf("ERROR: write failed - only wrote %i bytes\n", bytes_written);
+			printf("error condition tests FAILED: write failed - only wrote %i bytes\n", bytes_written);
 		}
 		return -1;
 	}
 	bytes_read = read(f, NULL, 4);
 	if (bytes_read != -1 || errno != EINVAL) {
-		printf("ERROR: didn't catch read buffer too small error (errno=%i)\n", errno);
+		printf("error condition tests FAILED: didn't catch read buffer too small error (errno=%i)\n", errno);
 		return -1;
 	}
 
 	// userland read pointer error test
-	bytes_written = write(f, &eight_bytes, 8);
+	bytes_written = write(f, eight_bytes, 8);
 	if (bytes_written != 8) {
 		if (bytes_written == -1) {
-			printf("ERROR: write failed with code %s\n", strerror(errno));
+			printf("error condition tests FAILED: write failed with code %s\n", strerror(errno));
 		} else {
-			printf("ERROR: write failed - only wrote %i bytes\n", bytes_written);
+			printf("error condition tests FAILED: write failed - only wrote %i bytes\n", bytes_written);
 		}
 		return -1;
 	}
 	bytes_read = read(f, NULL, 8);
 	if (bytes_read != -1 || errno != EFAULT) {
-		printf("ERROR: didn't catch userland read pointer error (%s)\n", strerror(errno));
+		printf("error condition tests FAILED: didn't catch userland read pointer error (%s)\n", strerror(errno));
 		return -1;
 	}
 
 	// userland write pointer error test
 	bytes_written = write(f, NULL, 8);
 	if (bytes_written != -1 || errno != EFAULT) {
-		printf("ERROR: didn't catch userland write pointer error (%s)\n", strerror(errno));
+		printf("error condition tests FAILED: didn't catch userland write pointer error (%s)\n", strerror(errno));
 		return -1;
 	}
 
 	// write 0-length packet
-	bytes_written = write(f, &eight_bytes, 0);
+	bytes_written = write(f, eight_bytes, 0);
 	if (bytes_written != -1 || errno != EINVAL) {
-		printf("ERROR: didn't catch 0-length packet write error (%s)\n", strerror(errno));
+		printf("error condition tests FAILED: didn't catch 0-length packet write error (%s)\n", strerror(errno));
 		return -1;
 	}
 
 	// write misaligned packet
-	bytes_written = write(f, &eight_bytes, 7);
+	bytes_written = write(f, eight_bytes, 7);
 	if (bytes_written != -1 || errno != EINVAL) {
-		printf("ERROR: didn't catch misaligned packet write error (%s)\n", strerror(errno));
+		printf("error condition tests FAILED: didn't catch misaligned packet write error (%s)\n", strerror(errno));
 		return -1;
 	}
 
 	// write packet larger than fifo size
-	bytes_written = write(f, &eight_bytes, 5000000);
+	unsigned big_buffer_num = 500000;
+	unsigned big_buffer[big_buffer_num];
+	bytes_written = write(f, big_buffer, big_buffer_num*4);
 	if (bytes_written != -1 || errno != EINVAL) {
-		printf("ERROR: didn't catch oversized packet write error (%s)\n", strerror(errno));
+		printf("error condition tests FAILED: didn't catch oversized packet write error (%s)\n", strerror(errno));
 		return -1;
 	}
 
-	printf("error condition tests passed\n");
+	printf("error condition tests PASSED\n");
 
 	close(f);
 
@@ -139,7 +143,7 @@ int main(int argc, char *argv[])
 
 	printf("generating byte stream...\n");
 
-	// generate random string of words
+	// generate random string of numbers
 	// e.g. 3 words 111155558888
 	for (unsigned i = 0; i < num_words; i++) {
 		unsigned r = rand() % 10 + '0';

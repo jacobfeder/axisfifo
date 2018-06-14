@@ -64,10 +64,12 @@ MODULE_DESCRIPTION("axis-fifo: interface to the Xilinx AXI-Stream FIFO v4.1 IP c
 #define WRITE_BUFF_SIZE 128
 
 // read/write IP register
+// TODO static inline
 #define write_reg(addr_offset, value) 	iowrite32(value, device_wrapper->base_addr + addr_offset)
 #define read_reg(addr_offset) 			ioread32(device_wrapper->base_addr + addr_offset)
 
 // Macro for reseting IP core
+// TODO static inline
 #define reset_ip_core() write_reg(XLLF_SRR_OFFSET, XLLF_SRR_RESET_MASK);						\
 						write_reg(XLLF_TDFR_OFFSET, XLLF_TDFR_RESET_MASK); 						\
 						write_reg(XLLF_RDFR_OFFSET, XLLF_RDFR_RESET_MASK);						\
@@ -78,6 +80,7 @@ MODULE_DESCRIPTION("axis-fifo: interface to the Xilinx AXI-Stream FIFO v4.1 IP c
 						write_reg(XLLF_ISR_OFFSET, XLLF_INT_ALL_MASK)
 
 // Macro for printing debug messages inside driver callbacks (e.g. open/close/read/write)
+// TODO static inline
 #ifdef DEBUG
 	#define printkdbg(fmt, ...) printk(KERN_DEBUG "%s %u: " fmt, DRIVER_NAME, device_wrapper->id, ##__VA_ARGS__)
 #else
@@ -85,6 +88,7 @@ MODULE_DESCRIPTION("axis-fifo: interface to the Xilinx AXI-Stream FIFO v4.1 IP c
 #endif
 
 // Macro for printing error messages inside driver callbacks (e.g. open/close/read/write)
+// TODO static inline
 #define printkerr(fmt, ...) printk(KERN_ERR "%s %u: " fmt, DRIVER_NAME, device_wrapper->id, ##__VA_ARGS__)
 
 // convert milliseconds to kernel jiffies
@@ -680,7 +684,7 @@ static int axis_fifo_close(struct inode *inod, struct file *device_file)
 
 // functions for reading/writing directly to registers via sysfs
 
-// since all our sysfs read/write functions are essentially identical
+// TODO make static inline
 #define sysfs_write_function(addr_offset)													\
 	struct axis_fifo_local *device_wrapper = dev_get_drvdata(dev);							\
 	if (!mutex_trylock(&device_wrapper->write_mutex)) {										\
@@ -876,7 +880,10 @@ static int axis_fifo_probe(struct platform_device *pdev)
 	#define get_dts_property(name, var)									\
 		if (of_property_read_u32(dev->of_node, name, &var) < 0) { 		\
 			printkerr("couldn't read IP dts property '" name "'");		\
+		} else {														\
+			printkdbg("dts property '" name "' = %u\n", var);			\
 		}
+
 	get_dts_property("xlnx,axi-str-rxd-tdata-width", rxd_tdata_width)
 	get_dts_property("xlnx,axi-str-txc-tdata-width", txc_tdata_width)
 	get_dts_property("xlnx,axi-str-txd-tdata-width", txd_tdata_width)
