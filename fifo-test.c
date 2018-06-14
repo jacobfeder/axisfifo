@@ -74,15 +74,18 @@ int main(int argc, char *argv[])
 	bytes_written = write(f, eight_bytes, 8);
 	if (bytes_written != 8) {
 		if (bytes_written == -1) {
-			printf("error condition tests FAILED: write failed with code %s\n", strerror(errno));
+			printf("error condition tests FAILED: write failed with code %s\n",
+				strerror(errno));
 		} else {
-			printf("error condition tests FAILED: write failed - only wrote %i bytes\n", bytes_written);
+			printf("error condition tests FAILED: write failed - only wrote %i bytes\n",
+				bytes_written);
 		}
 		return -1;
 	}
 	bytes_read = read(f, NULL, 4);
 	if (bytes_read != -1 || errno != EINVAL) {
-		printf("error condition tests FAILED: didn't catch read buffer too small error (errno=%i)\n", errno);
+		printf("error condition tests FAILED: didn't catch read buffer too small error (errno=%i)\n",
+			errno);
 		return -1;
 	}
 
@@ -90,45 +93,52 @@ int main(int argc, char *argv[])
 	bytes_written = write(f, eight_bytes, 8);
 	if (bytes_written != 8) {
 		if (bytes_written == -1) {
-			printf("error condition tests FAILED: write failed with code %s\n", strerror(errno));
+			printf("error condition tests FAILED: write failed with code %s\n",
+				strerror(errno));
 		} else {
-			printf("error condition tests FAILED: write failed - only wrote %i bytes\n", bytes_written);
+			printf("error condition tests FAILED: write failed - only wrote %i bytes\n",
+				bytes_written);
 		}
 		return -1;
 	}
 	bytes_read = read(f, NULL, 8);
 	if (bytes_read != -1 || errno != EFAULT) {
-		printf("error condition tests FAILED: didn't catch userland read pointer error (%s)\n", strerror(errno));
+		printf("error condition tests FAILED: didn't catch userland read pointer error (%s)\n",
+			strerror(errno));
 		return -1;
 	}
 
 	// userland write pointer error test
 	bytes_written = write(f, NULL, 8);
 	if (bytes_written != -1 || errno != EFAULT) {
-		printf("error condition tests FAILED: didn't catch userland write pointer error (%s)\n", strerror(errno));
+		printf("error condition tests FAILED: didn't catch userland write pointer error (%s)\n",
+			strerror(errno));
 		return -1;
 	}
 
 	// write 0-length packet
 	bytes_written = write(f, eight_bytes, 0);
 	if (bytes_written != -1 || errno != EINVAL) {
-		printf("error condition tests FAILED: didn't catch 0-length packet write error (%s)\n", strerror(errno));
+		printf("error condition tests FAILED: didn't catch 0-length packet write error (%s)\n",
+			strerror(errno));
 		return -1;
 	}
 
 	// write misaligned packet
 	bytes_written = write(f, eight_bytes, 7);
 	if (bytes_written != -1 || errno != EINVAL) {
-		printf("error condition tests FAILED: didn't catch misaligned packet write error (%s)\n", strerror(errno));
+		printf("error condition tests FAILED: didn't catch misaligned packet write error (%s)\n",
+			strerror(errno));
 		return -1;
 	}
 
 	// write packet larger than fifo size
-	unsigned big_buffer_num = 500000;
+	unsigned big_buffer_num = 1000000;
 	unsigned big_buffer[big_buffer_num];
 	bytes_written = write(f, big_buffer, big_buffer_num*4);
 	if (bytes_written != -1 || errno != EINVAL) {
-		printf("error condition tests FAILED: didn't catch oversized packet write error (%s)\n", strerror(errno));
+		printf("error condition tests FAILED: didn't catch oversized packet write error (%s)\n",
+			strerror(errno));
 		return -1;
 	}
 
@@ -171,7 +181,8 @@ int main(int argc, char *argv[])
 		f = open(read_device_file, O_RDONLY);
 
 		if (f < 0) {
-			printf("read open failed with code '%s'\n", strerror(errno));
+			printf("read open failed with code '%s'\n", 
+				strerror(errno));
 			free(data_string);
 			_exit(EXIT_FAILURE);
 		}
@@ -185,10 +196,12 @@ int main(int argc, char *argv[])
 		unsigned bytes_remaining = data_string_len;
 		while (bytes_remaining) {
 
-			// read from device until we get all the bytes sent or a timeout occurs
+			// read from device until we get all
+			// the bytes sent or a timeout occurs
 			bytes_read = read(f, read_data, bytes_remaining);
 			if (bytes_read > 0) {
-				if (memcmp(read_data, data_string + read_offset, bytes_read) != 0) {
+				if (memcmp(read_data, data_string + read_offset,
+						bytes_read) != 0) {
 					printf("\nread failed - data corruption\n");
 					close(f);
 					free(data_string);
@@ -200,7 +213,8 @@ int main(int argc, char *argv[])
 				read_timeout = time(NULL) + TIMEOUT;
 			} else if (bytes_read < 0) {
 				// read error
-				printf("\nread failed with code '%s'\n", strerror(errno));
+				printf("\nread failed with code '%s'\n",
+					strerror(errno));
 				close(f);
 				free(data_string);
 				free(read_data);
@@ -226,7 +240,8 @@ int main(int argc, char *argv[])
 		f = open(write_device_file, O_WRONLY);
 
 		if (f < 0) {
-			printf("write open failed with code '%s'\n", strerror(errno));
+			printf("write open failed with code '%s'\n",
+				strerror(errno));
 			free(data_string);
 			return EXIT_FAILURE;
 		}
@@ -241,14 +256,21 @@ int main(int argc, char *argv[])
 		while (bytes_remaining) {
 
 			write_packet_size = MAX_PACKET_SIZE;
-			bytes_written = write(f, bytes_to_write, bytes_remaining > write_packet_size ? write_packet_size : bytes_remaining);
+			bytes_written = write(f, bytes_to_write,
+					bytes_remaining > write_packet_size ?
+					write_packet_size :
+					bytes_remaining);
 			if (bytes_written > 0) {
 				bytes_remaining -= bytes_written;
 				bytes_to_write += bytes_written;
 				write_timeout = time(NULL) + TIMEOUT;
-				printf("\rtransfer %0.1f%% complete      ", 100*(1-(float)bytes_remaining / (float)data_string_len));
+				printf("\rtransfer %0.1f%% complete      ",
+					100 * (1 - (float)bytes_remaining /
+					(float)data_string_len));
 			} else if (bytes_written < 0) {
-				printf("\nwrite failed with code '%s' write_packet_size=%i\n", strerror(errno), write_packet_size);
+				printf("\nwrite failed with code '%s' " \
+					"write_packet_size=%i\n",
+					strerror(errno), write_packet_size);
 				close(f);
 				break;
 			} else if (time(NULL) > write_timeout) {
@@ -266,19 +288,25 @@ int main(int argc, char *argv[])
 		(void)waitpid(pid, &status, 0);
 
 		clock_gettime(CLOCK_MONOTONIC, &stop_time);
-		float runtime = (float)(stop_time.tv_sec - start_time.tv_sec) + \
-						(float)(stop_time.tv_nsec - start_time.tv_nsec)/1000000000.0;
+		float runtime = (float)(stop_time.tv_sec - start_time.tv_sec) +
+				(float)(stop_time.tv_nsec - start_time.tv_nsec)
+				/ 1000000000.0;
 
 		if (WIFEXITED(status)) {
 			// exited normally
 			if (WEXITSTATUS(status) == EXIT_SUCCESS) {
-				printf("transfer succeeded after %.3f seconds\n", runtime);
-				printf("transfer speed %.3fMB/s\n", (float)data_string_len / runtime / 1024.0 / 1024.0);
+				printf("transfer succeeded after %.3f seconds\n",
+					runtime);
+				printf("transfer speed %.3fMB/s\n",
+					(float)data_string_len / runtime /
+					1024.0 / 1024.0);
 			} else {
-				printf("transfer failed after %.3f seconds\n", runtime);
+				printf("transfer failed after %.3f seconds\n",
+					runtime);
 			}
 		} else {
-			printf("transfer failed after %.3f seconds\n", runtime);
+			printf("transfer failed after %.3f seconds\n",
+				runtime);
 		}
 
 		close(f);
