@@ -47,8 +47,9 @@ int main(int argc, char *argv[])
 
 	ssize_t bytes_written;
 	ssize_t bytes_read;
-	// file descriptor
-	int f;
+	// file descriptors
+	int f_rd;
+	int f_wr;
 
 	// first argument is how many words to write
 	unsigned num_words = atoi(argv[1]);
@@ -65,13 +66,15 @@ int main(int argc, char *argv[])
 
 	// test error conditions
 
-	f = open(write_device_file, O_RDWR);
+	f_rd = open(read_device_file, O_RDONLY);
+	f_wr = open(write_device_file, O_WRONLY);
+
 	unsigned eight_bytes[2] = {0xDEADBEEF, 0xDEADBEEF};
 
 	printf("TESTING error conditions...\n");
 
 	// read buffer too small test
-	bytes_written = write(f, eight_bytes, 8);
+	bytes_written = write(f_wr, eight_bytes, 8);
 	if (bytes_written != 8) {
 		if (bytes_written == -1) {
 			printf("error condition tests FAILED: write failed with code %s\n",
@@ -82,7 +85,7 @@ int main(int argc, char *argv[])
 		}
 		return -1;
 	}
-	bytes_read = read(f, NULL, 4);
+	bytes_read = read(f_rd, NULL, 4);
 	if (bytes_read != -1 || errno != EINVAL) {
 		printf("error condition tests FAILED: didn't catch read buffer too small error (errno=%i)\n",
 			errno);
@@ -90,7 +93,7 @@ int main(int argc, char *argv[])
 	}
 
 	// userland read pointer error test
-	bytes_written = write(f, eight_bytes, 8);
+	bytes_written = write(f_wr, eight_bytes, 8);
 	if (bytes_written != 8) {
 		if (bytes_written == -1) {
 			printf("error condition tests FAILED: write failed with code %s\n",
@@ -101,7 +104,7 @@ int main(int argc, char *argv[])
 		}
 		return -1;
 	}
-	bytes_read = read(f, NULL, 8);
+	bytes_read = read(f_rd, NULL, 8);
 	if (bytes_read != -1 || errno != EFAULT) {
 		printf("error condition tests FAILED: didn't catch userland read pointer error (%s)\n",
 			strerror(errno));
@@ -109,7 +112,7 @@ int main(int argc, char *argv[])
 	}
 
 	// userland write pointer error test
-	bytes_written = write(f, NULL, 8);
+	bytes_written = write(f_wr, NULL, 8);
 	if (bytes_written != -1 || errno != EFAULT) {
 		printf("error condition tests FAILED: didn't catch userland write pointer error (%s)\n",
 			strerror(errno));
@@ -117,7 +120,7 @@ int main(int argc, char *argv[])
 	}
 
 	// write 0-length packet
-	bytes_written = write(f, eight_bytes, 0);
+	bytes_written = write(f_wr, eight_bytes, 0);
 	if (bytes_written != -1 || errno != EINVAL) {
 		printf("error condition tests FAILED: didn't catch 0-length packet write error (%s)\n",
 			strerror(errno));
@@ -125,7 +128,7 @@ int main(int argc, char *argv[])
 	}
 
 	// write misaligned packet
-	bytes_written = write(f, eight_bytes, 7);
+	bytes_written = write(f_wr, eight_bytes, 7);
 	if (bytes_written != -1 || errno != EINVAL) {
 		printf("error condition tests FAILED: didn't catch misaligned packet write error (%s)\n",
 			strerror(errno));
@@ -135,7 +138,7 @@ int main(int argc, char *argv[])
 	// write packet larger than fifo size
 	unsigned big_buffer_num = 1000000;
 	unsigned big_buffer[big_buffer_num];
-	bytes_written = write(f, big_buffer, big_buffer_num*4);
+	bytes_written = write(f_wr, big_buffer, big_buffer_num*4);
 	if (bytes_written != -1 || errno != EINVAL) {
 		printf("error condition tests FAILED: didn't catch oversized packet write error (%s)\n",
 			strerror(errno));
@@ -144,7 +147,8 @@ int main(int argc, char *argv[])
 
 	printf("error condition tests PASSED\n");
 
-	close(f);
+	close(f_rd);
+	close(f_wr);
 
 	data_string = (char *)malloc(data_string_len);
 
@@ -178,7 +182,7 @@ int main(int argc, char *argv[])
 	else if (pid == 0) {
 		// reader (child) process
 
-		f = open(read_device_file, O_RDONLY);
+		int f = open(read_device_file, O_RDONLY);
 
 		if (f < 0) {
 			printf("read open failed with code '%s'\n", 
@@ -237,7 +241,7 @@ int main(int argc, char *argv[])
 	else {
 		// writer process
 
-		f = open(write_device_file, O_WRONLY);
+		int f = open(write_device_file, O_WRONLY);
 
 		if (f < 0) {
 			printf("write open failed with code '%s'\n",

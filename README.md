@@ -51,7 +51,7 @@ You can also make non-blocking reads/writes by opening the file with the O_NONBL
 int f = open("/dev/axis_fifo0", O_RDWR | O_NONBLOCK);
 ```
 
-See fifo_test.c for more detailed usage code and to test functionality/throughput of your FIFO.
+See fifo-test.c for more detailed usage code and to test functionality/throughput of your FIFO.
 
 # Sysfs direct register access
 
