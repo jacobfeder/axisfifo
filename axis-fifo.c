@@ -1003,7 +1003,7 @@ static int axis_fifo_probe(struct platform_device *pdev)
 	// ----------------------------
 
 	// allocate device wrapper memory
-	device_wrapper = (struct axis_fifo_local *) devm_kzalloc(dev,
+	device_wrapper = (struct axis_fifo_local *) devm_kcalloc(dev,
 			sizeof(struct axis_fifo_local), GFP_KERNEL);
 	if (!device_wrapper) {
 		printk(KERN_ERR "couldn't allocate memory for axis-fifo device\n");
