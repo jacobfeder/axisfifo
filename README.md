@@ -6,8 +6,8 @@ See Xilinx PG080 document for IP details.
 
 The driver currently supports only store-forward mode with a 32-bit
 AXI4 Lite interface. DOES NOT support:
-	- cut-through mode
-	- AXI4 (non-lite)
+- cut-through mode
+- AXI4 (non-lite)
 
 You should find a character device in /dev (e.g. /dev/axis_fifo_########) for each AXI-Stream fifo you create in your hardware. The device can be read and written to like a normal file.
 
