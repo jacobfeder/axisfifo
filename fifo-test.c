@@ -69,6 +69,15 @@ int main(int argc, char *argv[])
 	f_rd = open(read_device_file, O_RDONLY);
 	f_wr = open(write_device_file, O_WRONLY);
 
+	if (f_rd < 0) {
+		printf("Open read failed with error: %s\n", strerror(errno));
+		return -1;
+	}
+	if (f_wr < 0) {
+		printf("Open write failed with error: %s\n", strerror(errno));
+		return -1;
+	}
+
 	unsigned eight_bytes[2] = {0xDEADBEEF, 0xDEADBEEF};
 
 	printf("TESTING error conditions...\n");
