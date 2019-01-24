@@ -1071,6 +1071,7 @@ static int axis_fifo_remove(struct platform_device *pdev)
 
 static const struct of_device_id axis_fifo_of_match[] = {
 	{ .compatible = "xlnx,axi-fifo-mm-s-4.1", },
+	{ .compatible = "xlnx,axi-fifo-mm-s-4.2", },
 	{},
 };
 MODULE_DEVICE_TABLE(of, axis_fifo_of_match);
@@ -1105,4 +1106,4 @@ module_exit(axis_fifo_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Jacob Feder <jacobsfeder@gmail.com>");
-MODULE_DESCRIPTION("Xilinx AXI-Stream FIFO v4.1 IP core driver");
+MODULE_DESCRIPTION("Xilinx AXI-Stream FIFO v4.1/v4.2 IP core driver");

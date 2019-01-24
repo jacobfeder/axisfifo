@@ -1,4 +1,4 @@
-# Xilinx AXI-Stream FIFO v4.1 IP core driver
+# Xilinx AXI-Stream FIFO v4.1/v4.2 IP core driver
 
 This IP core has read and write AXI-Stream FIFOs, the contents of which can be accessed from the AXI4 memory-mapped interface. This is useful for transferring data from a processor into the FPGA fabric. The driver creates a character device that can be read/written to with standard open/read/write/close.
 
