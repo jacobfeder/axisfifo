@@ -60,8 +60,9 @@ See axis-fifo.txt to see example device tree entry.
 
 ## Poll
 
-poll returns POLLOUT only when Transmit Data FIFO Vacancy (TDFV) register > (tx-fifo-depth - tx-fifo-pf-threshold)
-poll returns POLLIN whenever the Receive Data FIFO Occupancy (RDFO) register is NOT empty
+* poll returns POLLOUT only when Transmit Data FIFO Vacancy (TDFV) register > (tx-fifo-depth - tx-fifo-pf-threshold)
+
+* poll returns POLLIN whenever the Receive Data FIFO Occupancy (RDFO) register is NOT empty
 
 # Sysfs direct register access
 
