@@ -58,6 +58,11 @@ See fifo-test-eth.c for more detailed usage code and to test poll() and non-word
 
 See axis-fifo.txt to see example device tree entry.
 
+## Poll
+
+poll returns POLLOUT only when Transmit Data FIFO Vacancy (TDFV) register > (tx-fifo-depth - tx-fifo-pf-threshold)
+poll returns POLLIN whenever the Receive Data FIFO Occupancy (RDFO) register is NOT empty
+
 # Sysfs direct register access
 
 You can access the IP registers directly if you wish using sysfs. They are located in  

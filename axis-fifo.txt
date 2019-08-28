@@ -31,7 +31,7 @@ Required properties:
 - xlnx,data-interface-type: Should be <0x0>
 - xlnx,has-axis-tdest: Should be <0x0> (this feature isn't supported)
 - xlnx,has-axis-tid: Should be <0x0> (this feature isn't supported)
-- xlnx,has-axis-tkeep: Should be <0x0> (this feature isn't supported)
+- xlnx,has-axis-tkeep: Should be <0x1> 
 - xlnx,has-axis-tstrb: Should be <0x0> (this feature isn't supported)
 - xlnx,has-axis-tuser: Should be <0x0> (this feature isn't supported)
 - xlnx,rx-fifo-depth: Depth of RX FIFO in words
@@ -69,7 +69,7 @@ axi_fifo_mm_s_0: axi_fifo_mm_s@43c00000 {
 	xlnx,data-interface-type = <0x0>;
 	xlnx,has-axis-tdest = <0x0>;
 	xlnx,has-axis-tid = <0x0>;
-	xlnx,has-axis-tkeep = <0x0>;
+	xlnx,has-axis-tkeep = <0x1>;
 	xlnx,has-axis-tstrb = <0x0>;
 	xlnx,has-axis-tuser = <0x0>;
 	xlnx,rx-fifo-depth = <0x200>;

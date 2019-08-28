@@ -151,22 +151,31 @@ int main(int argc, char *argv[])
 	printf("error condition tests PASSED\n");
 
 	// write non word-boundary sized packet
-	int bufSize = 9;
+	int bufSize = 10;
 	uint8_t bufa[bufSize];
 	uint8_t bufb[bufSize];
-	memset(bufa,0,bufSize);
-	memset(bufb,0,bufSize);
-	for(int i = 0; i < bufSize; i++)
-		bufa[i] = i % 255;
-	bytes_written = write(f_wr, bufa, bufSize);
-	bytes_read = read(f_rd, bufb, bytes_written);
-	for(int i = 0; i < bufSize; i++) {
-		if (bufa[i] != bufb[i]) {
-			printf("bufa[%d]=0x%x != bufb[%d]=0x%x\n",
-					i,bufa[i],i,bufb[i]);
-			printf("non-word boundary read/write FAILED ...\n");
+	for(int i = 4; i < bufSize; i++) {
+		memset(bufa,0,bufSize);
+		memset(bufb,0,bufSize);
+		for(int j = 0; j < i; j++)
+			bufa[j] = j % 255;
+
+		bytes_written = write(f_wr, bufa, i);
+		bytes_read = read(f_rd, bufb, bytes_written);
+		if(bytes_written != bytes_read){
+			printf("non-word boundary read/write FAILED\n");
 			return -1;
 		}
+
+		for(int j = 0; j < i; j++) {
+			if (bufa[j] != bufb[j]) {
+				printf("bufa[%d]=0x%x != bufb[%d]=0x%x\n",
+						j,bufa[j],j,bufb[j]);
+				printf("non-word boundary read/write FAILED : with bytes size = %d ...\n",i);
+				return -1;
+			}
+		}
+
 	}
 	printf("non-word boundary read/write test PASSED\n");
 
