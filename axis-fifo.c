@@ -134,6 +134,8 @@ struct axis_fifo {
 
 	unsigned int rx_fifo_depth; /* max words in the receive fifo */
 	unsigned int tx_fifo_depth; /* max words in the transmit fifo */
+    	unsigned int rx_fifo_pf_thresh; /* programmable full threshold for rx */
+    	unsigned int tx_fifo_pf_thresh; /* programmable full threshold for tx */
 	int has_rx_fifo; /* whether the IP has the rx fifo enabled */
 	int has_tx_fifo; /* whether the IP has the tx fifo enabled */
 
@@ -351,8 +353,10 @@ static unsigned int axis_poll(struct file *file, poll_table *wait)
         poll_wait(file, &axis_write_wait, wait);
         if (ioread32(fifo->base_addr + XLLF_RDFO_OFFSET))
                 mask |= POLLIN | POLLRDNORM;
-        if (ioread32(fifo->base_addr + XLLF_TDFV_OFFSET))
+    	if (ioread32(fifo->base_addr + XLLF_TDFV_OFFSET) > 
+		(fifo->tx_fifo_depth - fifo->tx_fifo_pf_thresh)) {
                 mask |= POLLOUT;
+	}
 
         return mask;
 }
@@ -955,11 +959,6 @@ static int axis_fifo_probe(struct platform_device *pdev)
 		rc = -EIO;
 		goto err_unmap;
 	}
-	if (has_tkeep) {
-		dev_err(fifo->dt_device, "tkeep not supported\n");
-		rc = -EIO;
-		goto err_unmap;
-	}
 	if (has_tstrb) {
 		dev_err(fifo->dt_device, "tstrb not supported\n");
 		rc = -EIO;
@@ -996,6 +995,8 @@ static int axis_fifo_probe(struct platform_device *pdev)
 	fifo->rx_fifo_depth = rx_fifo_depth;
 	/* IP sets TDFV to fifo depth - 4 so we will do the same */
 	fifo->tx_fifo_depth = tx_fifo_depth - 4;
+	fifo->rx_fifo_pf_thresh = rx_programmable_full_threshold;
+	fifo->tx_fifo_pf_thresh = tx_programmable_full_threshold;
 	fifo->has_rx_fifo = use_rx_data;
 	fifo->has_tx_fifo = use_tx_data;
 

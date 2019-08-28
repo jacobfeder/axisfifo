@@ -7,6 +7,8 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <stdint.h>
+#include <poll.h>
 
 /*
 for testing the axis fifo driver by
@@ -136,14 +138,6 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-	// write misaligned packet
-	bytes_written = write(f_wr, eight_bytes, 7);
-	if (bytes_written != -1 || errno != EINVAL) {
-		printf("error condition tests FAILED: didn't catch misaligned packet write error (%s)\n",
-			strerror(errno));
-		return -1;
-	}
-
 	// write packet larger than fifo size
 	unsigned big_buffer_num = 1000000;
 	unsigned big_buffer[big_buffer_num];
@@ -155,6 +149,111 @@ int main(int argc, char *argv[])
 	}
 
 	printf("error condition tests PASSED\n");
+
+	// write non word-boundary sized packet
+	int bufSize = 9;
+	uint8_t bufa[bufSize];
+	uint8_t bufb[bufSize];
+	memset(bufa,0,bufSize);
+	memset(bufb,0,bufSize);
+	for(int i = 0; i < bufSize; i++)
+		bufa[i] = i % 255;
+	bytes_written = write(f_wr, bufa, bufSize);
+	bytes_read = read(f_rd, bufb, bytes_written);
+	for(int i = 0; i < bufSize; i++) {
+		if (bufa[i] != bufb[i]) {
+			printf("bufa[%d]=0x%x != bufb[%d]=0x%x\n",
+					i,bufa[i],i,bufb[i]);
+			printf("non-word boundary read/write FAILED ...\n");
+			return -1;
+		}
+	}
+	printf("non-word boundary read/write test PASSED\n");
+
+	// test poll subsystem
+	struct pollfd fds[2];
+	int wrote = 0;
+	int done = 0;
+	int pollTimeoutSec = 1;
+	int pollrc;
+	fds[0].fd = f_rd;
+	fds[1].fd = f_wr;
+	fds[0].events = POLLIN;
+	fds[1].events = POLLOUT;
+	
+	printf("Running poll test ... will take ~%d seconds\n",4*pollTimeoutSec);
+
+	// test false positive read 
+	while (!done) {
+		pollrc = poll(&fds[0],1,pollTimeoutSec*1000);
+		if (pollrc < 0) {
+			printf("poll test FAILED : poll returned error ...\n");
+			perror("poll");
+			return -1;
+		} if (pollrc == 0) {
+			done = 1;
+		} else {
+			if (fds[0].revents & POLLIN) {
+				printf("poll test FAILED : claimed there was data to read when there was not\n");
+				return -1;
+			} 
+			done = 1;
+		}
+	}
+
+	// test false positive write 
+	// fill up transmit fifo 
+	do {
+		bytes_written = write(f_wr, big_buffer, 128);
+	} while (bytes_written != -1);
+
+	done = 0;
+	while (!done) {
+		pollrc = poll(&fds[1],1,pollTimeoutSec*1000);
+		if (pollrc < 0) {
+			printf("poll test FAILED : poll returned error ...\n");
+			perror("poll");
+			return -1;
+		} if (pollrc == 0) {
+			done = 1;
+		} else {
+			if (fds[1].revents & POLLOUT) {
+				printf("poll test FAILED : claimed there was space to write when there was not\n");
+				return -1;
+			} 
+			done = 1;
+		}
+	}
+	// flush the rx fifo 
+	do {
+		bytes_read = read(f_rd, big_buffer, 128);
+	} while (bytes_read != -1);
+
+
+	// test functional read/write returns
+	done = 0;
+	while (!done) {
+		pollrc = poll(fds,2,pollTimeoutSec*1000);
+		if (pollrc < 0) {
+			printf("poll test FAILED : poll returned error ...\n");
+			perror("poll");
+			return -1;
+		} if (pollrc == 0) {
+			printf("poll test FAILED : poll timed out ...\n");
+			return -1;
+		} else {
+			if (wrote == 0 && (fds[1].revents & POLLOUT)) {
+				bytes_written = write(f_wr, bufa, bufSize);
+				wrote = 1;
+			}
+
+			if (wrote == 1 && (fds[0].revents & POLLIN)) {
+				bytes_read = read(f_rd, bufb, bytes_written);
+				done = 1;
+			}
+		}
+	}
+	printf("poll test PASSED\n");
 
 	close(f_rd);
 	close(f_wr);
