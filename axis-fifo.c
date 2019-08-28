@@ -20,6 +20,7 @@
 #include <linux/device.h>
 #include <linux/cdev.h>
 #include <linux/init.h>
+#include <linux/poll.h>
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/io.h>
@@ -27,8 +28,6 @@
 #include <linux/interrupt.h>
 #include <linux/param.h>
 #include <linux/fs.h>
-#include <linux/device.h>
-#include <linux/cdev.h>
 #include <linux/types.h>
 #include <linux/uaccess.h>
 #include <linux/jiffies.h>
@@ -109,6 +108,9 @@ static struct class *axis_fifo_driver_class; /* char device class */
 
 static int read_timeout = 1000; /* ms to wait before read() times out */
 static int write_timeout = 1000; /* ms to wait before write() times out */
+
+static DECLARE_WAIT_QUEUE_HEAD(axis_read_wait);
+static DECLARE_WAIT_QUEUE_HEAD(axis_write_wait);
 
 /* ----------------------------
  * module command-line arguments
@@ -339,6 +341,22 @@ static void reset_ip_core(struct axis_fifo *fifo)
 	iowrite32(XLLF_INT_ALL_MASK, fifo->base_addr + XLLF_ISR_OFFSET);
 }
 
+static unsigned int axis_poll(struct file *file, poll_table *wait)
+{
+        unsigned int mask;
+        struct axis_fifo *fifo = (struct axis_fifo *)file->private_data;
+        mask = 0;
+
+        poll_wait(file, &axis_read_wait, wait);
+        poll_wait(file, &axis_write_wait, wait);
+        if (ioread32(fifo->base_addr + XLLF_RDFO_OFFSET))
+                mask |= POLLIN | POLLRDNORM;
+        if (ioread32(fifo->base_addr + XLLF_TDFV_OFFSET))
+                mask |= POLLOUT;
+
+        return mask;
+}
+
 /* reads a single packet from the fifo as dictated by the tlast signal */
 static ssize_t axis_fifo_read(struct file *f, char __user *buf,
 			      size_t len, loff_t *off)
@@ -346,6 +364,7 @@ static ssize_t axis_fifo_read(struct file *f, char __user *buf,
 	struct axis_fifo *fifo = (struct axis_fifo *)f->private_data;
 	size_t bytes_available;
 	unsigned int words_available;
+        unsigned int leftover;
 	unsigned int copied;
 	unsigned int copy;
 	unsigned int i;
@@ -371,6 +390,7 @@ static ssize_t axis_fifo_read(struct file *f, char __user *buf,
 			(read_timeout >= 0) ? msecs_to_jiffies(read_timeout) :
 				MAX_SCHEDULE_TIMEOUT);
 		spin_unlock_irq(&fifo->read_queue_lock);
+                wake_up_interruptible(&axis_read_wait);
 
 		if (ret == 0) {
 			/* timeout occurred */
@@ -400,16 +420,8 @@ static ssize_t axis_fifo_read(struct file *f, char __user *buf,
 		return -EINVAL;
 	}
 
-	if (bytes_available % sizeof(u32)) {
-		/* this probably can't happen unless IP
-		 * registers were previously mishandled
-		 */
-		dev_err(fifo->dt_device, "received a packet that isn't word-aligned - fifo core will be reset\n");
-		reset_ip_core(fifo);
-		return -EIO;
-	}
-
 	words_available = bytes_available / sizeof(u32);
+        leftover = bytes_available % sizeof(u32);
 
 	/* read data into an intermediate buffer, copying the contents
 	 * to userspace when the buffer is full
@@ -433,6 +445,17 @@ static ssize_t axis_fifo_read(struct file *f, char __user *buf,
 		words_available -= copy;
 	}
 
+        if (leftover) {
+                tmp_buf[0] = ioread32(fifo->base_addr +
+                                          XLLF_RDFD_OFFSET);
+
+                if (copy_to_user(buf + copied * sizeof(u32), tmp_buf,
+                                 leftover)) {
+                        reset_ip_core(fifo);
+                        return -EFAULT;
+                }
+        }
+
 	return bytes_available;
 }
 
@@ -442,18 +465,15 @@ static ssize_t axis_fifo_write(struct file *f, const char __user *buf,
 	struct axis_fifo *fifo = (struct axis_fifo *)f->private_data;
 	unsigned int words_to_write;
 	unsigned int copied;
+        unsigned int copiedBytes;
 	unsigned int copy;
 	unsigned int i;
 	int ret;
 	u32 tmp_buf[WRITE_BUF_SIZE];
-
-	if (len % sizeof(u32)) {
-		dev_err(fifo->dt_device,
-			"tried to send a packet that isn't word-aligned\n");
-		return -EINVAL;
-	}
+        int leftover;
 
 	words_to_write = len / sizeof(u32);
+        leftover = len % sizeof(u32);
 
 	if (!words_to_write) {
 		dev_err(fifo->dt_device,
@@ -490,6 +510,7 @@ static ssize_t axis_fifo_write(struct file *f, const char __user *buf,
 			(write_timeout >= 0) ? msecs_to_jiffies(write_timeout) :
 				MAX_SCHEDULE_TIMEOUT);
 		spin_unlock_irq(&fifo->write_queue_lock);
+                wake_up_interruptible(&axis_write_wait);
 
 		if (ret == 0) {
 			/* timeout occurred */
@@ -528,10 +549,21 @@ static ssize_t axis_fifo_write(struct file *f, const char __user *buf,
 		words_to_write -= copy;
 	}
 
-	/* write packet size to fifo */
-	iowrite32(copied * sizeof(u32), fifo->base_addr + XLLF_TLR_OFFSET);
+        if (leftover) {
+                if (copy_from_user(tmp_buf, buf + copied * sizeof(u32),
+                                   leftover)) {
+                        reset_ip_core(fifo);
+                        return -EFAULT;
+                }
+                iowrite32(tmp_buf[0], fifo->base_addr +
+                          XLLF_TDFD_OFFSET);
+        }
 
-	return (ssize_t)copied * sizeof(u32);
+        /* write packet size to fifo */
+        copiedBytes = (!!leftover) ? (copied*sizeof(u32)+leftover) : (copied*sizeof(u32));
+        iowrite32(copiedBytes, fifo->base_addr + XLLF_TLR_OFFSET);
+
+        return (ssize_t)copiedBytes;
 }
 
 static irqreturn_t axis_fifo_irq(int irq, void *dw)
@@ -681,7 +713,8 @@ static const struct file_operations fops = {
 	.open = axis_fifo_open,
 	.release = axis_fifo_close,
 	.read = axis_fifo_read,
-	.write = axis_fifo_write
+	.write = axis_fifo_write,
+	.poll = axis_poll
 };
 
 /* read named property from the device tree */

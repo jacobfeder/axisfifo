@@ -38,9 +38,6 @@ ssize_t bytes_read = read(f_rd, &read_buff, 100);
 close(f_wr);
 close(f_rd);
 ```
-
-Data can only be written and read in multiples of words (4 bytes).
-
 By default, read() and write() will block for one second before timing out. You can change this behavior by loading the module with command line arguments "read_timeout" and "write_timeout" (in milliseconds):
 
 `insmod /lib/modules/4.9.0-xilinx-v2017.4/extra/axis-fifo.ko read_timeout=100 write_timeout=5000`
@@ -56,6 +53,10 @@ int f = open("/dev/axis_fifo_43c00000", O_RDWR | O_NONBLOCK);
 ```
 
 See fifo-test.c for more detailed usage code and to test functionality/throughput of your FIFO.
+
+See fifo-test-eth.c for more detailed usage code and to test poll() and non-word boundary writes.
+
+See axis-fifo.txt to see example device tree entry.
 
 # Sysfs direct register access
 
