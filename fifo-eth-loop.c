@@ -1,6 +1,6 @@
 /**
  * @file axis-fifo-eth-loop.c
- * @author Jason Gutel
+ * @author Jason Gutel jason.gutel@gmail.com
  *
  * Sets up an echo ping-pong server over a TCP connection. Packets are sent
  * over sockets, sent to the AXI Stream FIFO core (assumed in loopback), and
