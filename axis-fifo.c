@@ -354,7 +354,7 @@ static unsigned int axis_poll(struct file *file, poll_table *wait)
         if (ioread32(fifo->base_addr + XLLF_RDFO_OFFSET))
                 mask |= POLLIN | POLLRDNORM;
     	if (ioread32(fifo->base_addr + XLLF_TDFV_OFFSET) > 
-		(fifo->tx_fifo_depth - fifo->tx_fifo_pf_thresh)) {
+		fifo->tx_fifo_pe_thresh) {
                 mask |= POLLOUT;
 	}
 
