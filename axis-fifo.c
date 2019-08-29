@@ -345,20 +345,32 @@ static void reset_ip_core(struct axis_fifo *fifo)
 
 static unsigned int axis_poll(struct file *file, poll_table *wait)
 {
-        unsigned int mask;
-        struct axis_fifo *fifo = (struct axis_fifo *)file->private_data;
-        mask = 0;
+	unsigned int mask;
+	struct axis_fifo *fifo = (struct axis_fifo *)file->private_data;
+	mask = 0;
 
-        poll_wait(file, &axis_read_wait, wait);
-        poll_wait(file, &axis_write_wait, wait);
-        if (ioread32(fifo->base_addr + XLLF_RDFO_OFFSET))
-                mask |= POLLIN | POLLRDNORM;
-    	if (ioread32(fifo->base_addr + XLLF_TDFV_OFFSET) > 
-		fifo->tx_fifo_pe_thresh) {
-                mask |= POLLOUT;
+	poll_wait(file, &axis_read_wait, wait);
+	poll_wait(file, &axis_write_wait, wait);
+
+	/* user should set the rx fifo programmable empty threshold
+	* in the device tree to indicate when POLLIN will return 
+	* NOTE : rx_fifo_pe_thresh is in WORDS not BYTES 
+	*/
+	if (ioread32(fifo->base_addr + XLLF_RDFO_OFFSET) >
+			fifo->rx_fifo_pe_thresh){
+		mask |= POLLIN | POLLRDNORM;
 	}
 
-        return mask;
+	/* user should set the tx fifo programmable empty threshold
+	* in the device tree to indicate when POLLOUT will return 
+	* NOTE : tx_fifo_pe_thresh is in WORDS not BYTES 
+	*/
+	if (ioread32(fifo->base_addr + XLLF_TDFV_OFFSET) > 
+			fifo->tx_fifo_pe_thresh) {
+		mask |= POLLOUT;
+	}
+
+	return mask;
 }
 
 /* reads a single packet from the fifo as dictated by the tlast signal */
