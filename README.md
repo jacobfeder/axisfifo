@@ -68,6 +68,14 @@ When setting up the device tree the values entered into tx-fifo-pe-threshold and
 
 * POLLIN set when the Receive Data FIFO Occupancy (RDFO) register > rx-fifo-pe-threshold
 
+## Word and Byte read/write alignments and TKEEP
+
+The AXI-Stream protocol requires the TKEEP flag to be enabled in order to process byte width transactions over a 32-bit bus. When the TKEEP flag is NOT used then the FIFO is only able to process on word boundaries. 
+
+The driver supports both modes by use of the has-axis-tkeep flag in the device tree. When it is NOT enabled byte width read/write requests will present an error and not be written to the core. 
+
+fifo-test.c supports testing of both modes.
+
 # Sysfs direct register access
 
 You can access the IP registers directly if you wish using sysfs. They are located in  
