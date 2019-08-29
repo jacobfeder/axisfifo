@@ -60,9 +60,13 @@ See axis-fifo.txt to see example device tree entry.
 
 ## Poll
 
-* poll returns POLLOUT only when Transmit Data FIFO Vacancy (TDFV) register > (tx-fifo-depth - tx-fifo-pf-threshold)
+The poll() mechanism is being implemented by considering a user defined minimum packet size using the FIFO's Programmable Empty Threshold values. When using poll to write to the FIFO it makes sure that this minimum number of bytes are available in the FIFO before asserting POLLOUT. When using poll to read from the FIFO it makes sure this minimum number of bytes are available before asserting POLLIN.
 
-* poll returns POLLIN whenever the Receive Data FIFO Occupancy (RDFO) register is NOT empty
+When setting up the device tree the values entered into tx-fifo-pe-threshold and rx-fifo-pe-threshold will define this behavior.
+
+* POLLOUT set when Transmit Data FIFO Vacancy (TDFV) register > tx-fifo-pe-threshold
+
+* POLLIN set when the Receive Data FIFO Occupancy (RDFO) register > rx-fifo-pe-threshold
 
 # Sysfs direct register access
 
