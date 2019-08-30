@@ -54,7 +54,7 @@ int f = open("/dev/axis_fifo_43c00000", O_RDWR | O_NONBLOCK);
 
 See fifo-test.c for more detailed usage code and to test functionality/throughput of your FIFO.
 
-See fifo-test-eth.c for more detailed usage code and to test poll() and non-word boundary writes.
+See fifo-test-eth.c provided for simple echo server demo using the fifo.
 
 See axis-fifo.txt to see example device tree entry.
 
@@ -85,7 +85,7 @@ rx-min-pkt-size poll will return POLLIN.
 
 Example code using poll is provided in fifo-test.c
 
-**NOTE** ``tx-max-pkt-size`` and ``rx-min-pkt-size`` are defined as WORDS not BYTES.
+**NOTE :** ``tx-max-pkt-size`` and ``rx-min-pkt-size`` are defined as WORDS not BYTES.
 
 # Sysfs direct register access
 
