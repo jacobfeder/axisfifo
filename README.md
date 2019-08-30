@@ -58,23 +58,25 @@ See fifo-test-eth.c for more detailed usage code and to test poll() and non-word
 
 See axis-fifo.txt to see example device tree entry.
 
-## Poll
-
-The poll() mechanism is being implemented by considering a user defined minimum packet size using the FIFO's Programmable Empty Threshold values. When using poll to write to the FIFO it makes sure that this minimum number of bytes are available in the FIFO before asserting POLLOUT. When using poll to read from the FIFO it makes sure this minimum number of bytes are available before asserting POLLIN.
-
-When setting up the device tree the values entered into tx-fifo-pe-threshold and rx-fifo-pe-threshold will define this behavior.
-
-* POLLOUT set when Transmit Data FIFO Vacancy (TDFV) register > tx-fifo-pe-threshold
-
-* POLLIN set when the Receive Data FIFO Occupancy (RDFO) register > rx-fifo-pe-threshold
-
 ## Word and Byte read/write alignments and TKEEP
 
 The AXI-Stream protocol requires the TKEEP flag to be enabled in order to process byte width transactions over a 32-bit bus. When the TKEEP flag is NOT used then the FIFO is only able to process on word boundaries. 
 
-The driver supports both modes by use of the has-axis-tkeep flag in the device tree. When it is NOT enabled byte width read/write requests will present an error and not be written to the core. 
+TKEEP must be both enabled on the IP Core and the device-tree by use of the ``has-axis-tkeep = <1>`` entry in the device tree. When it is NOT enabled byte width read/write requests will present an error and not be written to the core. 
 
 fifo-test.c supports testing of both modes.
+
+## Poll
+
+The poll() mechanism is being implemented by considering a user defined minimum packet size using the FIFO's Programmable Empty Threshold values. When using poll to write to the FIFO it makes sure that this minimum number of bytes are available in the FIFO before asserting POLLOUT. When using poll to read from the FIFO it makes sure this minimum number of bytes are available before asserting POLLIN.
+
+When setting up the device tree the values entered into ``tx-fifo-pe-threshold`` and ``rx-fifo-pe-threshold`` will define this behavior. 
+
+**NOTE** ``tx-fifo-pe-threshold`` and ``rx-fifo-pe-threshold`` are defined as WORDS not BYTES.
+
+* POLLOUT set when Transmit Data FIFO Vacancy (TDFV) register > tx-fifo-pe-threshold
+
+* POLLIN set when the Receive Data FIFO Occupancy (RDFO) register > rx-fifo-pe-threshold
 
 # Sysfs direct register access
 
