@@ -68,15 +68,24 @@ fifo-test.c supports testing of both modes.
 
 ## Poll
 
-The poll() mechanism is being implemented by considering a user defined minimum packet size using the FIFO's Programmable Empty Threshold values. When using poll to write to the FIFO it makes sure that this minimum number of bytes are available in the FIFO before asserting POLLOUT. When using poll to read from the FIFO it makes sure this minimum number of bytes are available before asserting POLLIN.
+The poll mechanism works off of the assumption that the user has an idea for a
+minimum and maximum packet size with respect to the AXI-Stream framing. To
+support this there are two entries in the device tree,
 
-When setting up the device tree the values entered into ``tx-fifo-pe-threshold`` and ``rx-fifo-pe-threshold`` will define this behavior. 
+```
+	xlnx,rx-min-pkt-size = <255>; /* 1020 bytes */
+	xlnx,tx-max-pkt-size = <257>; /* 1028 bytes */
+```
 
-**NOTE** ``tx-fifo-pe-threshold`` and ``rx-fifo-pe-threshold`` are defined as WORDS not BYTES.
+When the Transmit Data FIFO Vacancy register (TDFV) is greater than
+tx-max-pkt-size poll will return POLLOUT.
 
-* POLLOUT set when Transmit Data FIFO Vacancy (TDFV) register > tx-fifo-pe-threshold
+When the Receive Data FIFO Occupancy register (RDFO) is greater than
+rx-min-pkt-size poll will return POLLIN.
 
-* POLLIN set when the Receive Data FIFO Occupancy (RDFO) register > rx-fifo-pe-threshold
+Example code using poll is provided in fifo-test.c
+
+**NOTE** ``tx-max-pkt-size`` and ``rx-min-pkt-size`` are defined as WORDS not BYTES.
 
 # Sysfs direct register access
 
