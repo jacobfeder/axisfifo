@@ -357,10 +357,10 @@ static unsigned int axis_poll(struct file *file, poll_table *wait)
 	unsigned int tdfv;
 	mask = 0;
 
-    if (fifo->has_rx_fifo)
-	poll_wait(file, &axis_read_wait, wait);
-    if (fifo->has_tx_fifo)
-	poll_wait(file, &axis_write_wait, wait);
+	if (fifo->has_rx_fifo)
+		poll_wait(file, &axis_read_wait, wait);
+	if (fifo->has_tx_fifo)
+		poll_wait(file, &axis_write_wait, wait);
 
 	/* user should set the rx-min-pkt-size
 	* in the device tree to indicate when POLLIN will return 
