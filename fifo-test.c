@@ -178,26 +178,26 @@ int main(int argc, char *argv[])
 		for(int i = 4; i < 16; i++) {
 			memset(bufa,0,MAX_PACKET_SIZE);
 			memset(bufb,0,MAX_PACKET_SIZE);
-		for(int j = 0; j < i; j++)
-			bufa[j] = j % 255;
+			for(int j = 0; j < i; j++)
+				bufa[j] = j % 255;
 
-		bytes_written = write(f_wr, bufa, i);
-		bytes_read = read(f_rd, bufb, bytes_written);
-		if(bytes_written != bytes_read){
+			bytes_written = write(f_wr, bufa, i);
+			bytes_read = read(f_rd, bufb, bytes_written);
+			if(bytes_written != bytes_read){
 				printf("non-word boundary read/write FAILED : bytes_written != bytes_read\n");
-			return -1;
-		}
-
-		for(int j = 0; j < i; j++) {
-			if (bufa[j] != bufb[j]) {
-					printf("\tbufa[%d]=0x%x != bufb[%d]=0x%x\n",
-						j,bufa[j],j,bufb[j]);
-				printf("non-word boundary read/write FAILED : with bytes size = %d ...\n",i);
 				return -1;
 			}
+
+			for(int j = 0; j < i; j++) {
+				if (bufa[j] != bufb[j]) {
+					printf("\tbufa[%d]=0x%x != bufb[%d]=0x%x\n",
+						j,bufa[j],j,bufb[j]);
+					printf("non-word boundary read/write FAILED : with bytes size = %d ...\n",i);
+					return -1;
+				}
+			}
 		}
-	}
-	printf("non-word boundary read/write test PASSED\n");
+		printf("non-word boundary read/write test PASSED\n");
 	}
 
 	// test poll subsystem
