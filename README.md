@@ -54,15 +54,38 @@ int f = open("/dev/axis_fifo_43c00000", O_RDWR | O_NONBLOCK);
 
 See fifo-test.c for more detailed usage code and to test functionality/throughput of your FIFO.
 
-See fifo-test-eth.c for more detailed usage code and to test poll() and non-word boundary writes.
+See fifo-test-eth.c provided for simple echo server demo using the fifo.
 
 See axis-fifo.txt to see example device tree entry.
 
+## Word and Byte read/write alignments and TKEEP
+
+The AXI-Stream protocol requires the TKEEP flag to be enabled in order to process byte width transactions over a 32-bit bus. When the TKEEP flag is NOT used then the FIFO is only able to process on word boundaries. 
+
+TKEEP must be both enabled on the IP Core and the device-tree by use of the ``has-axis-tkeep = <1>`` entry in the device tree. When it is NOT enabled byte width read/write requests will present an error and not be written to the core. 
+
+fifo-test.c supports testing of both modes.
+
 ## Poll
 
-* poll returns POLLOUT only when Transmit Data FIFO Vacancy (TDFV) register > (tx-fifo-depth - tx-fifo-pf-threshold)
+The poll mechanism works off of the assumption that the user has an idea for a
+minimum and maximum packet size with respect to the AXI-Stream framing. To
+support this there are two entries in the device tree,
 
-* poll returns POLLIN whenever the Receive Data FIFO Occupancy (RDFO) register is NOT empty
+```
+	xlnx,rx-min-pkt-size = <255>; /* 1020 bytes */
+	xlnx,tx-max-pkt-size = <257>; /* 1028 bytes */
+```
+
+When the Transmit Data FIFO Vacancy register (TDFV) is greater than
+tx-max-pkt-size poll will return POLLOUT.
+
+When the Receive Data FIFO Occupancy register (RDFO) is greater than
+rx-min-pkt-size poll will return POLLIN.
+
+Example code using poll is provided in fifo-test.c
+
+**NOTE :** ``tx-max-pkt-size`` and ``rx-min-pkt-size`` are defined as WORDS not BYTES.
 
 # Sysfs direct register access
 

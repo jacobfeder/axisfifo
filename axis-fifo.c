@@ -45,6 +45,7 @@
 
 #define READ_BUF_SIZE 128U /* read buffer length in words */
 #define WRITE_BUF_SIZE 128U /* write buffer length in words */
+/* #define AXIS_FIFO_DEBUG_PRINT */
 
 /* ----------------------------
  *     IP register offsets
@@ -136,8 +137,13 @@ struct axis_fifo {
 	unsigned int tx_fifo_depth; /* max words in the transmit fifo */
     	unsigned int rx_fifo_pf_thresh; /* programmable full threshold for rx */
     	unsigned int tx_fifo_pf_thresh; /* programmable full threshold for tx */
+	unsigned int rx_fifo_pe_thresh; /* programmable empty threshold for rx */
+	unsigned int tx_fifo_pe_thresh; /* programmable empty threshold for tx */
+	unsigned int tx_max_pkt_size; /* used to trigger poll events */
+	unsigned int rx_min_pkt_size; /* used to trigger poll events */
 	int has_rx_fifo; /* whether the IP has the rx fifo enabled */
 	int has_tx_fifo; /* whether the IP has the tx fifo enabled */
+	int has_tkeep; /* whether the IP has TKEEP enabled or not */
 
 	wait_queue_head_t read_queue; /* wait queue for asynchronos read */
 	spinlock_t read_queue_lock; /* lock for reading waitqueue */
@@ -345,20 +351,40 @@ static void reset_ip_core(struct axis_fifo *fifo)
 
 static unsigned int axis_poll(struct file *file, poll_table *wait)
 {
-        unsigned int mask;
-        struct axis_fifo *fifo = (struct axis_fifo *)file->private_data;
-        mask = 0;
+	unsigned int mask;
+	struct axis_fifo *fifo = (struct axis_fifo *)file->private_data;
+	unsigned int rdfo;
+	unsigned int tdfv;
+	mask = 0;
 
-        poll_wait(file, &axis_read_wait, wait);
-        poll_wait(file, &axis_write_wait, wait);
-        if (ioread32(fifo->base_addr + XLLF_RDFO_OFFSET))
-                mask |= POLLIN | POLLRDNORM;
-    	if (ioread32(fifo->base_addr + XLLF_TDFV_OFFSET) > 
-		(fifo->tx_fifo_depth - fifo->tx_fifo_pf_thresh)) {
-                mask |= POLLOUT;
+	if (fifo->has_rx_fifo)
+		poll_wait(file, &axis_read_wait, wait);
+	if (fifo->has_tx_fifo)
+		poll_wait(file, &axis_write_wait, wait);
+
+	/* user should set the rx-min-pkt-size
+	* in the device tree to indicate when POLLIN will return 
+	* NOTE : rx-min-pkt-size is in WORDS not BYTES 
+	*/
+	if (fifo->has_rx_fifo) {
+		rdfo = ioread32(fifo->base_addr + XLLF_RDFO_OFFSET);
+		if (rdfo > fifo->rx_min_pkt_size){
+			mask |= POLLIN | POLLRDNORM;
+		}		
 	}
 
-        return mask;
+	/* user should set the tx-max-pkt-size
+	* in the device tree to indicate when POLLOUT will return 
+	* NOTE : tx-max-pkt-size is in WORDS not BYTES 
+	*/
+	if (fifo->has_tx_fifo) {
+		tdfv = ioread32(fifo->base_addr + XLLF_TDFV_OFFSET);
+		if (tdfv > fifo->tx_max_pkt_size){ 
+			mask |= POLLOUT;
+       		}
+	}
+
+	return mask;
 }
 
 /* reads a single packet from the fifo as dictated by the tlast signal */
@@ -422,10 +448,25 @@ static ssize_t axis_fifo_read(struct file *f, char __user *buf,
 			bytes_available, len);
 		reset_ip_core(fifo);
 		return -EINVAL;
+    }
+
+	if (!fifo->has_tkeep && bytes_available % sizeof(u32)) {
+		/* this probably can't happen unless IP
+		 * registers were previously mishandled
+		 */
+		dev_err(fifo->dt_device, "received a packet that isn't word-aligned - fifo core will be reset\n");
+		reset_ip_core(fifo);
+		return -EIO;
 	}
 
 	words_available = bytes_available / sizeof(u32);
-        leftover = bytes_available % sizeof(u32);
+
+#ifdef AXIS_FIFO_DEBUG_PRINT
+	dev_err(fifo->dt_device,"read: rdfo : %d ... tdfv : %d ... rlr : %d\n",
+		ioread32(fifo->base_addr + XLLF_RDFO_OFFSET),
+		ioread32(fifo->base_addr + XLLF_TDFV_OFFSET),
+		bytes_available);
+#endif
 
 	/* read data into an intermediate buffer, copying the contents
 	 * to userspace when the buffer is full
@@ -449,16 +490,19 @@ static ssize_t axis_fifo_read(struct file *f, char __user *buf,
 		words_available -= copy;
 	}
 
-        if (leftover) {
-                tmp_buf[0] = ioread32(fifo->base_addr +
-                                          XLLF_RDFD_OFFSET);
+	if (fifo->has_tkeep) {
+		leftover = bytes_available % sizeof(u32);
+		if (leftover) {
+			tmp_buf[0] = ioread32(fifo->base_addr +
+				                  XLLF_RDFD_OFFSET);
 
-                if (copy_to_user(buf + copied * sizeof(u32), tmp_buf,
-                                 leftover)) {
-                        reset_ip_core(fifo);
-                        return -EFAULT;
-                }
-        }
+			if (copy_to_user(buf + copied * sizeof(u32), tmp_buf,
+				         leftover)) {
+				reset_ip_core(fifo);
+				return -EFAULT;
+			}
+		}
+    }
 
 	return bytes_available;
 }
@@ -475,6 +519,12 @@ static ssize_t axis_fifo_write(struct file *f, const char __user *buf,
 	int ret;
 	u32 tmp_buf[WRITE_BUF_SIZE];
         int leftover;
+
+	if (!fifo->has_tkeep && len % sizeof(u32)) {
+		dev_err(fifo->dt_device,
+		    "tried to send a packet that isn't word-aligned\n");
+		return -EINVAL;
+	}
 
 	words_to_write = len / sizeof(u32);
         leftover = len % sizeof(u32);
@@ -532,6 +582,12 @@ static ssize_t axis_fifo_write(struct file *f, const char __user *buf,
 		}
 	}
 
+#ifdef AXIS_FIFO_DEBUG_PRINT
+	dev_err(fifo->dt_device,"write: rdfo : %d ... tdfv : %d\n",
+		ioread32(fifo->base_addr + XLLF_RDFO_OFFSET),
+		ioread32(fifo->base_addr + XLLF_TDFV_OFFSET));
+#endif
+
 	/* write data from an intermediate buffer into the fifo IP, refilling
 	 * the buffer with userspace data as needed
 	 */
@@ -553,7 +609,7 @@ static ssize_t axis_fifo_write(struct file *f, const char __user *buf,
 		words_to_write -= copy;
 	}
 
-        if (leftover) {
+	if (fifo->has_tkeep && leftover) {	
                 if (copy_from_user(tmp_buf, buf + copied * sizeof(u32),
                                    leftover)) {
                         reset_ip_core(fifo);
@@ -564,7 +620,7 @@ static ssize_t axis_fifo_write(struct file *f, const char __user *buf,
         }
 
         /* write packet size to fifo */
-        copiedBytes = (!!leftover) ? (copied*sizeof(u32)+leftover) : (copied*sizeof(u32));
+	copiedBytes = (fifo->has_tkeep && !!leftover) ? (copied*sizeof(u32)+leftover) : (copied*sizeof(u32));
         iowrite32(copiedBytes, fifo->base_addr + XLLF_TLR_OFFSET);
 
         return (ssize_t)copiedBytes;
@@ -585,6 +641,7 @@ static irqreturn_t axis_fifo_irq(int irq, void *dw)
 
 			/* wake the reader process if it is waiting */
 			wake_up(&fifo->read_queue);
+			wake_up_interruptible(&axis_read_wait);
 
 			/* clear interrupt */
 			iowrite32(XLLF_INT_RC_MASK & XLLF_INT_ALL_MASK,
@@ -594,6 +651,7 @@ static irqreturn_t axis_fifo_irq(int irq, void *dw)
 
 			/* wake the writer process if it is waiting */
 			wake_up(&fifo->write_queue);
+			wake_up_interruptible(&axis_write_wait);
 
 			iowrite32(XLLF_INT_TC_MASK & XLLF_INT_ALL_MASK,
 				  fifo->base_addr + XLLF_ISR_OFFSET);
@@ -605,11 +663,13 @@ static irqreturn_t axis_fifo_irq(int irq, void *dw)
 		} else if (pending_interrupts & XLLF_INT_TFPE_MASK) {
 			/* transmit fifo programmable empty */
 
+			wake_up_interruptible(&axis_write_wait);
 			iowrite32(XLLF_INT_TFPE_MASK & XLLF_INT_ALL_MASK,
 				  fifo->base_addr + XLLF_ISR_OFFSET);
 		} else if (pending_interrupts & XLLF_INT_RFPF_MASK) {
 			/* receive fifo programmable full */
 
+			wake_up_interruptible(&axis_read_wait);
 			iowrite32(XLLF_INT_RFPF_MASK & XLLF_INT_ALL_MASK,
 				  fifo->base_addr + XLLF_ISR_OFFSET);
 		} else if (pending_interrupts & XLLF_INT_RFPE_MASK) {
@@ -777,6 +837,8 @@ static int axis_fifo_probe(struct platform_device *pdev)
 	unsigned int use_tx_control;
 	unsigned int use_tx_cut_through;
 	unsigned int use_tx_data;
+	unsigned int tx_max_pkt_size;
+	unsigned int rx_min_pkt_size;
 
 	/* ----------------------------
 	 *     init wrapper device
@@ -908,6 +970,12 @@ static int axis_fifo_probe(struct platform_device *pdev)
 	rc = get_dts_property(fifo, "xlnx,tx-fifo-depth", &tx_fifo_depth);
 	if (rc)
 		goto err_unmap;
+	rc = get_dts_property(fifo, "xlnx,tx-max-pkt-size", &tx_max_pkt_size);
+	if (rc)
+		goto err_unmap;
+	rc = get_dts_property(fifo, "xlnx,rx-min-pkt-size", &rx_min_pkt_size);
+	if (rc)
+		goto err_unmap;
 	rc = get_dts_property(fifo, "xlnx,tx-fifo-pe-threshold",
 			      &tx_programmable_empty_threshold);
 	if (rc)
@@ -997,8 +1065,13 @@ static int axis_fifo_probe(struct platform_device *pdev)
 	fifo->tx_fifo_depth = tx_fifo_depth - 4;
 	fifo->rx_fifo_pf_thresh = rx_programmable_full_threshold;
 	fifo->tx_fifo_pf_thresh = tx_programmable_full_threshold;
-	fifo->has_rx_fifo = use_rx_data;
-	fifo->has_tx_fifo = use_tx_data;
+	fifo->rx_fifo_pe_thresh = rx_programmable_empty_threshold;
+	fifo->tx_fifo_pe_thresh = tx_programmable_empty_threshold;
+	fifo->has_rx_fifo = !!use_rx_data;
+	fifo->has_tx_fifo = !!use_tx_data;
+	fifo->has_tkeep = !!has_tkeep;
+	fifo->tx_max_pkt_size = tx_max_pkt_size;
+	fifo->rx_min_pkt_size = rx_min_pkt_size;
 
 	reset_ip_core(fifo);
 
@@ -1040,10 +1113,10 @@ static int axis_fifo_probe(struct platform_device *pdev)
 	/* create driver file */
 	fifo->device = device_create(axis_fifo_driver_class, NULL, fifo->devt,
 				     NULL, device_name);
-	if (!fifo->device) {
+	if (IS_ERR(fifo->device)) {
 		dev_err(fifo->dt_device,
 			"couldn't create driver file\n");
-		rc = -ENOMEM;
+		rc = PTR_ERR(fifo->device);
 		goto err_chrdev_region;
 	}
 	dev_set_drvdata(fifo->device, fifo);
@@ -1125,6 +1198,8 @@ static int __init axis_fifo_init(void)
 	pr_info("axis-fifo driver loaded with parameters read_timeout = %i, write_timeout = %i\n",
 		read_timeout, write_timeout);
 	axis_fifo_driver_class = class_create(THIS_MODULE, DRIVER_NAME);
+	if (IS_ERR(axis_fifo_driver_class))
+		return PTR_ERR(axis_fifo_driver_class);
 	return platform_driver_register(&axis_fifo_driver);
 }
 

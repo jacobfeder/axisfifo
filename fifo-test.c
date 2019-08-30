@@ -29,19 +29,21 @@ pass in the number of words to write and the driver device file location(s)
 
 // number of bytes to send in a packet (max is fifo depth * 4)
 #define MAX_PACKET_SIZE 8196
+#define POLL_PACKET_SIZE 1024
 
 int main(int argc, char *argv[])
 {
-	if (argc < 3 || argc > 4) {
-		printf("usage: %s [# words] [read device file] [optional: write device file]\n", argv[0]);
-		printf("		e.g. \"%s 1024 /dev/axis_fifo0\" for loopback configuration\n", argv[0]);
-		printf("		e.g. \"%s 1024 /dev/axis_fifo0 /dev/axis_fifo1\" for passthrough configuration\n", argv[0]);
+	if (argc < 4 || argc > 5) {
+		printf("usage: %s [# words] [tkeep] [read device file] [optional: write device file]\n", argv[0]);
+		printf("		e.g. \"%s 1024 1 /dev/axis_fifo0\" for loopback configuration\n", argv[0]);
+		printf("		e.g. \"%s 1024 1 /dev/axis_fifo0 /dev/axis_fifo1\" for passthrough configuration\n", argv[0]);
 		return -1;
 	}
 
 	// transmitted data string
 	char *data_string;
 	unsigned data_string_len;
+	int rc;
 
 	// device file locations
 	char *read_device_file;
@@ -52,25 +54,33 @@ int main(int argc, char *argv[])
 	// file descriptors
 	int f_rd;
 	int f_wr;
+	int tkeep;
 
 	// first argument is how many words to write
 	unsigned num_words = atoi(argv[1]);
 	data_string_len = num_words*4;
 
-	// second / third arguments are read/write device file names
-	if (argc == 3) {
-		read_device_file = argv[2];
-		write_device_file = argv[2];
-	} else {
-		read_device_file = argv[2];
-		write_device_file = argv[3];
-	}
+	printf("START :\n\n");
 
-	// test error conditions
+	tkeep = atoi(argv[2]);
+	if (!!tkeep)
+		printf("TKEEP enabled ... testing byte boundary read/writes\n");
+	else
+		printf("TKEEP not enabled ... testing word boundary read/writes\n");
+
+	// second / third arguments are read/write device file names
+	if (argc == 4) {
+		read_device_file = argv[3];
+		write_device_file = argv[3];
+	} else {
+		read_device_file = argv[3];
+		write_device_file = argv[4];
+	}
 
 	f_rd = open(read_device_file, O_RDONLY);
 	f_wr = open(write_device_file, O_WRONLY);
 
+	// test error conditions
 	if (f_rd < 0) {
 		printf("Open read failed with error: %s\n", strerror(errno));
 		return -1;
@@ -82,7 +92,8 @@ int main(int argc, char *argv[])
 
 	unsigned eight_bytes[2] = {0xDEADBEEF, 0xDEADBEEF};
 
-	printf("TESTING error conditions...\n");
+	printf("\nTESTING error conditions...\n");
+	fflush(stdout);
 
 	// read buffer too small test
 	bytes_written = write(f_wr, eight_bytes, 8);
@@ -138,6 +149,17 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
+	if (!tkeep) {
+		// write misaligned packet
+		// this will only fail if TKEEP is NOT enabled
+		bytes_written = write(f_wr, eight_bytes, 7);
+		if (bytes_written != -1 || errno != EINVAL) {
+			printf("error condition tests FAILED: didn't catch misaligned packet write error (%s)\n",
+				strerror(errno));
+			return -1;
+		}
+	}
+
 	// write packet larger than fifo size
 	unsigned big_buffer_num = 1000000;
 	unsigned big_buffer[big_buffer_num];
@@ -150,39 +172,36 @@ int main(int argc, char *argv[])
 
 	printf("error condition tests PASSED\n");
 
-	// write non word-boundary sized packet
-	int bufSize = 10;
-	uint8_t bufa[bufSize];
-	uint8_t bufb[bufSize];
-	for(int i = 4; i < bufSize; i++) {
-		memset(bufa,0,bufSize);
-		memset(bufb,0,bufSize);
-		for(int j = 0; j < i; j++)
-			bufa[j] = j % 255;
+	uint8_t bufa[MAX_PACKET_SIZE];
+	uint8_t bufb[MAX_PACKET_SIZE];
+	if (tkeep) {
+		for(int i = 4; i < 16; i++) {
+			memset(bufa,0,MAX_PACKET_SIZE);
+			memset(bufb,0,MAX_PACKET_SIZE);
+			for(int j = 0; j < i; j++)
+				bufa[j] = j % 255;
 
-		bytes_written = write(f_wr, bufa, i);
-		bytes_read = read(f_rd, bufb, bytes_written);
-		if(bytes_written != bytes_read){
-			printf("non-word boundary read/write FAILED\n");
-			return -1;
-		}
-
-		for(int j = 0; j < i; j++) {
-			if (bufa[j] != bufb[j]) {
-				printf("bufa[%d]=0x%x != bufb[%d]=0x%x\n",
-						j,bufa[j],j,bufb[j]);
-				printf("non-word boundary read/write FAILED : with bytes size = %d ...\n",i);
+			bytes_written = write(f_wr, bufa, i);
+			bytes_read = read(f_rd, bufb, bytes_written);
+			if(bytes_written != bytes_read){
+				printf("non-word boundary read/write FAILED : bytes_written != bytes_read\n");
 				return -1;
 			}
-		}
 
+			for(int j = 0; j < i; j++) {
+				if (bufa[j] != bufb[j]) {
+					printf("\tbufa[%d]=0x%x != bufb[%d]=0x%x\n",
+						j,bufa[j],j,bufb[j]);
+					printf("non-word boundary read/write FAILED : with bytes size = %d ...\n",i);
+					return -1;
+				}
+			}
+		}
+		printf("non-word boundary read/write test PASSED\n");
 	}
-	printf("non-word boundary read/write test PASSED\n");
 
 	// test poll subsystem
 	struct pollfd fds[2];
-	int wrote = 0;
-	int done = 0;
 	int pollTimeoutSec = 1;
 	int pollrc;
 	fds[0].fd = f_rd;
@@ -190,78 +209,89 @@ int main(int argc, char *argv[])
 	fds[0].events = POLLIN;
 	fds[1].events = POLLOUT;
 	
-	printf("Running poll test ... will take ~%d seconds\n",4*pollTimeoutSec);
+	printf("running poll test ... will take ~%d seconds\n",4*pollTimeoutSec);
 
-	// test false positive read 
-	while (!done) {
+	/* check false positive read */
+	while (1) {
 		pollrc = poll(&fds[0],1,pollTimeoutSec*1000);
 		if (pollrc < 0) {
-			printf("poll test FAILED : poll returned error ...\n");
+			printf("poll test FAILED : \n");
+			fflush(stdout);
 			perror("poll");
 			return -1;
 		} if (pollrc == 0) {
-			done = 1;
+			printf("\tread false pos pass\n");
+			break;
 		} else {
 			if (fds[0].revents & POLLIN) {
 				printf("poll test FAILED : claimed there was data to read when there was not\n");
 				return -1;
 			} 
-			done = 1;
 		}
 	}
 
-	// test false positive write 
-	// fill up transmit fifo 
-	do {
-		bytes_written = write(f_wr, big_buffer, 128);
-	} while (bytes_written != -1);
-
-	done = 0;
-	while (!done) {
+	/* fill fifo */
+	bytes_written = 0;
+	while (1) {
 		pollrc = poll(&fds[1],1,pollTimeoutSec*1000);
-		if (pollrc < 0) {
-			printf("poll test FAILED : poll returned error ...\n");
-			perror("poll");
-			return -1;
-		} if (pollrc == 0) {
-			done = 1;
-		} else {
+		if (pollrc > 0) {
 			if (fds[1].revents & POLLOUT) {
-				printf("poll test FAILED : claimed there was space to write when there was not\n");
+				rc = write(f_wr, big_buffer, POLL_PACKET_SIZE);
+				if (rc > 0) {
+					bytes_written += rc;
+				} else {
+					printf("poll test FAILED : ");
+					fflush(stdout);
+					perror("write");
 				return -1;
 			} 
-			done = 1;
 		}
+		} else if (pollrc == 0) {
+			printf("\twrite false positive pass\n");
+			break;
+		} else {
+			perror("poll");
+			return -1;
 	}
-	// flush the rx fifo 
-	do {
-		bytes_read = read(f_rd, big_buffer, 128);
-	} while (bytes_read != -1);
+	}
 
-
-	// test functional read/write returns
-	done = 0;
-	while (!done) {
-		pollrc = poll(fds,2,pollTimeoutSec*1000);
+	/* empty out fifo */
+	bytes_read = 0;
+	while (1) {
+		pollrc = poll(&fds[0],1,pollTimeoutSec*1000);
 		if (pollrc < 0) {
-			printf("poll test FAILED : poll returned error ...\n");
+			printf("poll test FAILED : ");
+			fflush(stdout);
 			perror("poll");
 			return -1;
 		} if (pollrc == 0) {
-			printf("poll test FAILED : poll timed out ...\n");
-			return -1;
+			break;
 		} else {
-			if (wrote == 0 && (fds[1].revents & POLLOUT)) {
-				bytes_written = write(f_wr, bufa, bufSize);
-				wrote = 1;
+			if ((fds[0].revents & POLLIN)) {
+				rc = read(f_rd, bufb, POLL_PACKET_SIZE);
+				if (rc >= 0){
+					bytes_read += rc;
+				} else {
+					printf("poll test FAILED : ");
+					fflush(stdout);
+					perror("read");
+					return -1;
 			}
-
-			if (wrote == 1 && (fds[0].revents & POLLIN)) {
-				bytes_read = read(f_rd, bufb, bytes_written);
-				done = 1;
 			}
 		}
 	}
+	if (bytes_written != bytes_read) {
+		printf("\t(bytes_written) %d != (bytes_read) %d\n",
+				bytes_written, bytes_read);
+		printf("\tThis occurs when a packet isnt within the range of the dts values\n"
+				"\trx-min-pkt-size and tx-max-pkt-size ... this test code uses 1024 bytes\n"
+				"\tso rx-min-pkt-size <= 1024/4-1 = 255\n"
+				"\tand tx-max-pkt-size >= 1024/4+1 = 257\n\n");
+		printf("poll test FAILED\n");
+		return -1;
+	}
+	printf("\t(bytes_written) %d == (bytes_read) %d\n",
+				bytes_written, bytes_read);
 	printf("poll test PASSED\n");
 
 	close(f_rd);
@@ -284,7 +314,7 @@ int main(int argc, char *argv[])
 		data_string[i*4 + 3] = (char)r;
 	}
 
-	printf("transferring %i words\n", num_words);
+	printf("\ttransferring %i words\n", num_words);
 
 	struct timespec start_time, stop_time;
 	clock_gettime(CLOCK_MONOTONIC, &start_time);
@@ -385,7 +415,7 @@ int main(int argc, char *argv[])
 				bytes_remaining -= bytes_written;
 				bytes_to_write += bytes_written;
 				write_timeout = time(NULL) + TIMEOUT;
-				printf("\rtransfer %0.1f%% complete      ",
+				printf("\rtransfer %0.1f%% complete	  ",
 					100 * (1 - (float)bytes_remaining /
 					(float)data_string_len));
 			} else if (bytes_written < 0) {

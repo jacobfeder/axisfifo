@@ -48,6 +48,8 @@ Required properties:
 - xlnx,use-tx-ctrl: Should be <0x0> (this feature isn't supported)
 - xlnx,use-tx-cut-through: Should be <0x0> (this feature isn't supported)
 - xlnx,use-tx-data: <0x1> if TX FIFO is enabled, <0x0> otherwise
+- xlnx,tx-max-pkt-size: defines when poll() returns POLLOUT (tdfv > tx-max-pkt-size)
+- xlnx,rx-min-pkt-size: defines when poll() returns POLLIN (rdfo > rx-min-pkt-size)
 
 Example:
 
@@ -86,4 +88,6 @@ axi_fifo_mm_s_0: axi_fifo_mm_s@43c00000 {
 	xlnx,use-tx-ctrl = <0x0>;
 	xlnx,use-tx-cut-through = <0x0>;
 	xlnx,use-tx-data = <0x1>;
+	xlnx,tx-max-pkt-size = <257>; 
+	xlnx,rx-min-pkt-size = <255>; 
 };
