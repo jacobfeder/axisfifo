@@ -310,6 +310,16 @@ static ssize_t rdr_show(struct device *dev,
 
 static DEVICE_ATTR_RO(rdr);
 
+static ssize_t core_reset_store(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct axis_fifo *fifo = (struct axis_fifo *)file->private_data;
+    reset_ip_core(fifo);
+    return 1;
+}
+
+static DEVICE_ATTR_WO(core_reset);
+
 static struct attribute *axis_fifo_attrs[] = {
 	&dev_attr_isr.attr,
 	&dev_attr_ier.attr,
@@ -324,6 +334,7 @@ static struct attribute *axis_fifo_attrs[] = {
 	&dev_attr_srr.attr,
 	&dev_attr_tdr.attr,
 	&dev_attr_rdr.attr,
+    &dev_attr_core_reset.attr,
 	NULL,
 };
 
