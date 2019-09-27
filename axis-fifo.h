@@ -23,8 +23,6 @@
 #define XLLF_SRR_OFFSET  0x00000028  /* Local Link Reset */
 #define XLLF_TDR_OFFSET  0x0000002C  /* Transmit Destination */
 #define XLLF_RDR_OFFSET  0x00000030  /* Receive Destination */
-#define AXIS_FIFO_IOCTL_MAGIC 'x'
-#define AXIS_FIFO_NUM_IOCTLS 2
 
 
 /* ----------------------------
@@ -65,7 +63,7 @@
  */
 
 #define AXIS_FIFO_IOCTL_MAGIC 'Q'
-#define AXIS_FIFO_NUM_IOCTLS 6
+#define AXIS_FIFO_NUM_IOCTLS 4
 
 
 struct axis_fifo_kern_regInfo{
