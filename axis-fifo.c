@@ -288,7 +288,7 @@ static ssize_t rx_min_pkt_store(struct device *dev, struct device_attribute *att
 
     fifo->rx_min_pkt_size = tmp;
 
-	return rc;
+    return strlen(buf);
 }
 
 static ssize_t rx_min_pkt_show(struct device *dev,
@@ -320,7 +320,7 @@ static ssize_t tx_max_pkt_store(struct device *dev, struct device_attribute *att
 
     fifo->tx_max_pkt_size = tmp;
 
-	return rc;
+    return strlen(buf);
 }
 
 static ssize_t tx_max_pkt_show(struct device *dev,
