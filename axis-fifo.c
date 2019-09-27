@@ -79,6 +79,7 @@ struct axis_fifo {
 	int irq; /* interrupt */
 	struct resource *mem; /* physical memory */
 	void __iomem *base_addr; /* kernel space memory */
+    uint32_t fpga_addr;
 
 	unsigned int rx_fifo_depth; /* max words in the receive fifo */
 	unsigned int tx_fifo_depth; /* max words in the transmit fifo */
@@ -920,6 +921,7 @@ static int axis_fifo_probe(struct platform_device *pdev)
 	}
 	dev_dbg(fifo->dt_device, "got memory location [0x%pa - 0x%pa]\n",
 		&fifo->mem->start, &fifo->mem->end);
+    fifo->fpga_addr = template->mem->start;
 
 	/* map physical memory to kernel virtual address space */
 	fifo->base_addr = ioremap(fifo->mem->start, resource_size(fifo->mem));
