@@ -812,6 +812,7 @@ static const struct file_operations fops = {
 	.owner = THIS_MODULE,
 	.open = axis_fifo_open,
 	.release = axis_fifo_close,
+    .unlocked_ioctl = axis_fifo_ioctl,
 	.read = axis_fifo_read,
 	.write = axis_fifo_write,
 	.poll = axis_poll
