@@ -118,6 +118,15 @@ int main(int argc, char **argv)
         return -1;
     }
 
+    /*****************************/
+    /* force a reset to the fifo */
+    /*****************************/
+    rc = ioctl(fd, AXIS_FIFO_RESET_IP);
+    if (rc) {
+        perror("ioctl");
+        return -1;
+    }
+
     /**********************************************/
     /* Start TCP Server and wait for a connection */
     /**********************************************/

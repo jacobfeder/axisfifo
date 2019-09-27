@@ -161,6 +161,18 @@ int main(int argc, char *argv[])
 		}
 	}
 
+    printf("Reseting with ioctl...\n");
+    rc = ioctl(f_rd, AXIS_FIFO_RESET_IP);
+    if (rc) {
+        perror("ioctl");
+        return -1;
+    }
+    rc = ioctl(f_wr, AXIS_FIFO_RESET_IP);
+    if (rc) {
+        perror("ioctl");
+        return -1;
+    }
+
 	// write packet larger than fifo size
 	unsigned big_buffer_num = 1000000;
 	unsigned big_buffer[big_buffer_num];
@@ -294,6 +306,19 @@ int main(int argc, char *argv[])
 	printf("\t(bytes_written) %d == (bytes_read) %d\n",
 				bytes_written, bytes_read);
 	printf("poll test PASSED\n");
+
+
+    printf("Reseting with ioctl...\n");
+    rc = ioctl(f_rd, AXIS_FIFO_RESET_IP);
+    if (rc) {
+        perror("ioctl");
+        return -1;
+    }
+    rc = ioctl(f_wr, AXIS_FIFO_RESET_IP);
+    if (rc) {
+        perror("ioctl");
+        return -1;
+    }
 
 	close(f_rd);
 	close(f_wr);
