@@ -114,6 +114,13 @@ static DECLARE_WAIT_QUEUE_HEAD(axis_read_wait);
 static DECLARE_WAIT_QUEUE_HEAD(axis_write_wait);
 
 /* ----------------------------
+ * Function Prototypes
+ * ----------------------------
+ */
+/* required for sysfs */
+static void reset_ip_core(struct axis_fifo *fifo);
+
+/* ----------------------------
  * module command-line arguments
  * ----------------------------
  */
@@ -135,8 +142,8 @@ struct axis_fifo {
 
 	unsigned int rx_fifo_depth; /* max words in the receive fifo */
 	unsigned int tx_fifo_depth; /* max words in the transmit fifo */
-    	unsigned int rx_fifo_pf_thresh; /* programmable full threshold for rx */
-    	unsigned int tx_fifo_pf_thresh; /* programmable full threshold for tx */
+	unsigned int rx_fifo_pf_thresh; /* programmable full threshold for rx */
+	unsigned int tx_fifo_pf_thresh; /* programmable full threshold for tx */
 	unsigned int rx_fifo_pe_thresh; /* programmable empty threshold for rx */
 	unsigned int tx_fifo_pe_thresh; /* programmable empty threshold for tx */
 	unsigned int tx_max_pkt_size; /* used to trigger poll events */
@@ -313,7 +320,7 @@ static DEVICE_ATTR_RO(rdr);
 static ssize_t core_reset_store(struct device *dev,
 			struct device_attribute *attr, char *buf)
 {
-	struct axis_fifo *fifo = (struct axis_fifo *)file->private_data;
+	struct axis_fifo *fifo = dev_get_drvdata(dev);
     reset_ip_core(fifo);
     return 1;
 }
