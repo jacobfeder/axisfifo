@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <stdint.h>
 #include <poll.h>
+#include "../axis-fifo.h"
 
 /*
 for testing the axis fifo driver by
