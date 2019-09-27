@@ -921,7 +921,7 @@ static int axis_fifo_probe(struct platform_device *pdev)
 	}
 	dev_dbg(fifo->dt_device, "got memory location [0x%pa - 0x%pa]\n",
 		&fifo->mem->start, &fifo->mem->end);
-    fifo->fpga_addr = template->mem->start;
+    fifo->fpga_addr = fifo->mem->start;
 
 	/* map physical memory to kernel virtual address space */
 	fifo->base_addr = ioremap(fifo->mem->start, resource_size(fifo->mem));
