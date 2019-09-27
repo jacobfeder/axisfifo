@@ -95,3 +95,11 @@ For example, you can read the RDFO with
 `cat /sys/class/axis_fifo/axis_fifo_########/ip_registers/rdfo`  
 or write to the fifo/TDFD with  
 `echo 0xdeadbeef > /sys/class/axis_fifo/axis_fifo_########/ip_registers/tdfd`.
+
+# IOCTLS
+
+The driver supports a number of ioctls for setting,
+- read/write to any register
+- reseting the core
+- set/get tx-max-pkt-size for poll()
+- set/get rx-min-pkt-size for poll()
