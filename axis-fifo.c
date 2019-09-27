@@ -317,8 +317,8 @@ static ssize_t rdr_show(struct device *dev,
 
 static DEVICE_ATTR_RO(rdr);
 
-static ssize_t core_reset_store(struct device *dev,
-			struct device_attribute *attr, char *buf)
+static ssize_t core_reset_store(struct device *dev, struct device_attribute *attr,
+			 const char *buf, size_t count)
 {
 	struct axis_fifo *fifo = dev_get_drvdata(dev);
     reset_ip_core(fifo);
