@@ -224,7 +224,7 @@ int main(int argc, char *argv[])
 	fds[0].events = POLLIN;
 	fds[1].events = POLLOUT;
     uint32_t minPkt = 255;
-    uint32_t maxPkt 257;
+    uint32_t maxPkt = 257;
 	
     /* initializing rx-min-pkt-size and tx-max-pkt-size */
     /* back up curent values */
