@@ -114,13 +114,6 @@ static DECLARE_WAIT_QUEUE_HEAD(axis_read_wait);
 static DECLARE_WAIT_QUEUE_HEAD(axis_write_wait);
 
 /* ----------------------------
- * Function Prototypes
- * ----------------------------
- */
-/* required for sysfs */
-static void reset_ip_core(struct axis_fifo *fifo);
-
-/* ----------------------------
  * module command-line arguments
  * ----------------------------
  */
@@ -164,6 +157,13 @@ struct axis_fifo {
 	dev_t devt; /* our char device number */
 	struct cdev char_device; /* our char device */
 };
+
+/* ----------------------------
+ * Function Prototypes
+ * ----------------------------
+ */
+/* required for sysfs */
+static void reset_ip_core(struct axis_fifo *fifo);
 
 /* ----------------------------
  *         sysfs entries
