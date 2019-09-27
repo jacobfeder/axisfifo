@@ -63,7 +63,7 @@
  */
 
 #define AXIS_FIFO_IOCTL_MAGIC 'Q'
-#define AXIS_FIFO_NUM_IOCTLS 4
+#define AXIS_FIFO_NUM_IOCTLS 8
 
 
 struct axis_fifo_kern_regInfo{
@@ -71,9 +71,13 @@ struct axis_fifo_kern_regInfo{
         uint32_t regVal;
         };
 
-#define AXIS_FIFO_GET_REG       _IOR(AXIS_FIFO_IOCTL_MAGIC, 0, struct axis_fifo_kern_regInfo)
-#define AXIS_FIFO_SET_REG       _IOW(AXIS_FIFO_IOCTL_MAGIC, 1, struct axis_fifo_kern_regInfo)
-#define AXIS_FIFO_RESET_IP      _IO(AXIS_FIFO_IOCTL_MAGIC,2)
-#define AXIS_FIFO_GET_FPGA_ADDR _IOR (AXIS_FIFO_IOCTL_MAGIC,3, uint32_t)
+#define AXIS_FIFO_GET_REG         _IOR(AXIS_FIFO_IOCTL_MAGIC, 0, struct axis_fifo_kern_regInfo)
+#define AXIS_FIFO_SET_REG         _IOW(AXIS_FIFO_IOCTL_MAGIC, 1, struct axis_fifo_kern_regInfo)
+#define AXIS_FIFO_GET_TX_MAX_PKT  _IOR(AXIS_FIFO_IOCTL_MAGIC, 2, uint32_t)
+#define AXIS_FIFO_SET_TX_MAX_PKT  _IOW(AXIS_FIFO_IOCTL_MAGIC, 3,  uint32_t)
+#define AXIS_FIFO_GET_RX_MIN_PKT  _IOR(AXIS_FIFO_IOCTL_MAGIC, 4,  uint32_t)
+#define AXIS_FIFO_SET_RX_MIN_PKT  _IO(AXIS_FIFO_IOCTL_MAGIC, 5,  uint32_t)
+#define AXIS_FIFO_RESET_IP        _IO(AXIS_FIFO_IOCTL_MAGIC,6)
+#define AXIS_FIFO_GET_FPGA_ADDR   _IOR(AXIS_FIFO_IOCTL_MAGIC,7, uint32_t)
 
 #endif /* AXIS_FIFO_H */

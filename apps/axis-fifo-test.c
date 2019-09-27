@@ -217,11 +217,49 @@ int main(int argc, char *argv[])
 	struct pollfd fds[2];
 	int pollTimeoutSec = 1;
 	int pollrc;
+    uint32_t minPktBak;
+    uint32_t maxPktBak;
 	fds[0].fd = f_rd;
 	fds[1].fd = f_wr;
 	fds[0].events = POLLIN;
 	fds[1].events = POLLOUT;
+    uint32_t minPkt = 255;
+    uint32_t maxPkt 257;
 	
+    /* initializing rx-min-pkt-size and tx-max-pkt-size */
+    /* back up curent values */
+    rc = ioctl(f_rd, AXIS_FIFO_GET_RX_MIN_PKT, &minPktBak);
+    if (rc) {
+        perror("ioctl");
+        return -1;
+    }
+    rc = ioctl(f_wr, AXIS_FIFO_GET_TX_MAX_PKT, &maxPktBak);
+    if (rc) {
+        perror("ioctl");
+        return -1;
+    }
+    /* update values for this test */
+    rc = ioctl(f_rd, AXIS_FIFO_SET_RX_MIN_PKT, &minPkt);
+    if (rc) {
+        perror("ioctl");
+        return -1;
+    }
+    rc = ioctl(f_wr, AXIS_FIFO_SET_TX_MAX_PKT, &maxPkt);
+    if (rc) {
+        perror("ioctl");
+        return -1;
+    }
+    /* reset core */
+    rc = ioctl(f_rd, AXIS_FIFO_RESET_IP);
+    if (rc) {
+        perror("ioctl");
+        return -1;
+    }
+    rc = ioctl(f_wr, AXIS_FIFO_RESET_IP);
+    if (rc) {
+        perror("ioctl");
+        return -1;
+    }
 	printf("running poll test ... will take ~%d seconds\n",4*pollTimeoutSec);
 
 	/* check false positive read */
@@ -308,7 +346,18 @@ int main(int argc, char *argv[])
 	printf("poll test PASSED\n");
 
 
-    printf("Reseting with ioctl...\n");
+    /* restore original min/max pkt sizes */
+    rc = ioctl(f_rd, AXIS_FIFO_SET_RX_MIN_PKT, &minPktBak);
+    if (rc) {
+        perror("ioctl");
+        return -1;
+    }
+    rc = ioctl(f_wr, AXIS_FIFO_SET_TX_MAX_PKT, &maxPktBak);
+    if (rc) {
+        perror("ioctl");
+        return -1;
+    }
+    /* reset cores */
     rc = ioctl(f_rd, AXIS_FIFO_RESET_IP);
     if (rc) {
         perror("ioctl");

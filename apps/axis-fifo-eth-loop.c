@@ -119,7 +119,7 @@ int main(int argc, char **argv)
     }
 
     /*****************************/
-    /* force a reset to the fifo */
+    /* initialize the fifo core  */
     /*****************************/
     rc = ioctl(readFifoFd, AXIS_FIFO_RESET_IP);
     if (rc) {
@@ -127,6 +127,12 @@ int main(int argc, char **argv)
         return -1;
     }
     rc = ioctl(writeFifoFd, AXIS_FIFO_RESET_IP);
+    if (rc) {
+        perror("ioctl");
+        return -1;
+    }
+    /* update rx_min_pkt so poll works as expected */
+    rc = ioctl(readFifoFd, AXIS_FIFO_SET_RX_MIN_PKT, &_opt_max_bytes);
     if (rc) {
         perror("ioctl");
         return -1;

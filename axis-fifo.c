@@ -275,6 +275,70 @@ static ssize_t core_reset_store(struct device *dev, struct device_attribute *att
 
 static DEVICE_ATTR_WO(core_reset);
 
+static ssize_t rx_min_pkt_store(struct device *dev, struct device_attribute *attr,
+			 const char *buf, size_t count)
+{
+	struct axis_fifo *fifo = dev_get_drvdata(dev);
+	unsigned long tmp;
+	int rc;
+
+	rc = kstrtoul(buf, 0, &tmp);
+	if (rc < 0)
+		return rc;
+
+    fifo->rx_min_pkt_size = tmp;
+
+	return rc;
+}
+
+static ssize_t rx_min_pkt_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct axis_fifo *fifo = dev_get_drvdata(dev);
+	unsigned int read_val;
+	unsigned int len;
+	char tmp[32];
+
+    read_val = fifo->rx_min_pkt_size;
+	len =  snprintf(tmp, sizeof(tmp), "0x%x\n", read_val);
+	memcpy(buf, tmp, len);
+    return len;
+}
+
+static DEVICE_ATTR_RW(rx_min_pkt);
+
+static ssize_t tx_max_pkt_store(struct device *dev, struct device_attribute *attr,
+			 const char *buf, size_t count)
+{
+	struct axis_fifo *fifo = dev_get_drvdata(dev);
+	unsigned long tmp;
+	int rc;
+
+	rc = kstrtoul(buf, 0, &tmp);
+	if (rc < 0)
+		return rc;
+
+    fifo->tx_max_pkt_size = tmp;
+
+	return rc;
+}
+
+static ssize_t tx_max_pkt_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct axis_fifo *fifo = dev_get_drvdata(dev);
+	unsigned int read_val;
+	unsigned int len;
+	char tmp[32];
+
+    read_val = fifo->tx_max_pkt_size;
+	len =  snprintf(tmp, sizeof(tmp), "0x%x\n", read_val);
+	memcpy(buf, tmp, len);
+    return len;
+}
+
+static DEVICE_ATTR_RW(tx_max_pkt);
+
 static struct attribute *axis_fifo_attrs[] = {
 	&dev_attr_isr.attr,
 	&dev_attr_ier.attr,
@@ -290,6 +354,8 @@ static struct attribute *axis_fifo_attrs[] = {
 	&dev_attr_tdr.attr,
 	&dev_attr_rdr.attr,
     &dev_attr_core_reset.attr,
+    &dev_attr_tx_max_pkt.attr,
+    &dev_attr_rx_min_pkt.attr,
 	NULL,
 };
 
@@ -639,6 +705,42 @@ static long axis_fifo_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
                 return -EFAULT;
             }
             iowrite32(regInfo.regVal, fifo->base_addr + regInfo.regNo);
+            rc = 0;
+            break;
+
+        case AXIS_FIFO_GET_TX_MAX_PKT:
+            temp_reg = fifo->tx_max_pkt_size;
+            if (copy_to_user(arg_ptr, &temp_reg, sizeof(temp_reg))) {
+                dev_err(fifo->dt_device, "unable to copy status reg to userspace\n");
+                return -EFAULT;
+            }
+            rc = 0;
+            break;
+
+        case AXIS_FIFO_SET_TX_MAX_PKT:
+            if (copy_from_user(&temp_reg, arg_ptr, sizeof(temp_reg))) {
+                dev_err(fifo->dt_device, "unable to copy status reg to userspace\n");
+                return -EFAULT;
+            }
+            fifo->tx_max_pkt_size = temp_reg;
+            rc = 0;
+            break;
+
+        case AXIS_FIFO_GET_RX_MIN_PKT:
+            temp_reg = fifo->rx_min_pkt_size;
+            if (copy_to_user(arg_ptr, &temp_reg, sizeof(temp_reg))) {
+                dev_err(fifo->dt_device, "unable to copy status reg to userspace\n");
+                return -EFAULT;
+            }
+            rc = 0;
+            break;
+
+        case AXIS_FIFO_SET_RX_MIN_PKT:
+            if (copy_from_user(&temp_reg, arg_ptr, sizeof(temp_reg))) {
+                dev_err(fifo->dt_device, "unable to copy status reg to userspace\n");
+                return -EFAULT;
+            }
+            fifo->rx_min_pkt_size = temp_reg;
             rc = 0;
             break;
 
