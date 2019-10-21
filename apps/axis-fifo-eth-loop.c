@@ -38,6 +38,7 @@
 #define TCP_PROTOCOL 1
 #define UDP_PROTOCOL 0
 #define DEF_MAX_BUF_SIZE_BYTES 1102
+#define DEF_MIN_BUF_SIZE_BYTES 100
 #define DEF_PORT_NO    7777
 #define DEF_DEV_TX "/dev/axis_fifo_0x43c10000"
 #define DEF_DEV_RX "/dev/axis_fifo_0x43c10000"
@@ -62,6 +63,7 @@ static volatile bool running = true;
 static int _opt_sock_port = DEF_PORT_NO;
 static int _opt_use_protocol = DEF_PROTOCOL;
 static int _opt_max_bytes = DEF_MAX_BUF_SIZE_BYTES;
+static int _opt_min_bytes = DEF_MIN_BUF_SIZE_BYTES;
 static char _opt_dev_tx[255];
 static char _opt_dev_rx[255];
 static int writeFifoFd;
@@ -131,8 +133,20 @@ int main(int argc, char **argv)
         perror("ioctl");
         return -1;
     }
+
     /* update rx_min_pkt so poll works as expected */
-    rc = ioctl(readFifoFd, AXIS_FIFO_SET_RX_MIN_PKT, &_opt_max_bytes);
+    uint32_t minWords = (_opt_min_bytes / 4);
+    rc = ioctl(readFifoFd, AXIS_FIFO_SET_RX_MIN_PKT, &minWords);
+    if (rc) {
+        perror("ioctl");
+        return -1;
+    }
+
+    /* update tx_max_pkt so poll works as expected */
+    /* will only poll ready to write if there is enough buffer space */
+    /* for a full packet */
+    uint32_t maxWords = (_opt_max_bytes / 4);
+    rc = ioctl(readFifoFd, AXIS_FIFO_SET_TX_MAX_PKT, &maxWords);
     if (rc) {
         perror("ioctl");
         return -1;
@@ -393,7 +407,8 @@ static void display_help(char * progName)
            "  -h, --help     Print this menu\n"
            "  -t, --devTx    Device to use ... /dev/axis_fifo_0x43c10000\n"
            "  -r, --devRx    Device to use ... /dev/axis_fifo_0x43c10000\n"
-           "  -b, --bytes    Number of bytes to expect in a packet\n"
+           "  -b, --maxbytes Maximum number of bytes to expect in a packet\n"
+           "  -c, --minbytes Minimum number of bytes to expect in a packet\n"
            "  -p, --port     Port number to bind to\n"
            "  -x, --protocol 0 for udp, 1 for tcp\n"
            ,
@@ -403,15 +418,17 @@ static void display_help(char * progName)
 
 static void print_opts()
 {
-    printf("Options :\n"
-           "Port    : %d\n"
-           "Bytes   : %d\n"
-           "DevTX   : %s\n"
-           "DevRx   : %s\n"
-           "Protocol : %s\n"
+    printf("Options : \n"
+            "Port           : %d\n"
+            "Max Bytes      : %d\n"
+            "Min Bytes      : %d\n"
+            "DevTX          : %s\n"
+            "DevRx          : %s\n"
+            "Protocol       : %s\n"
            ,
            _opt_sock_port,
            _opt_max_bytes,
+           _opt_min_bytes,
            _opt_dev_tx,
            _opt_dev_rx,
            _opt_use_protocol ? "TCP" : "UDP"
@@ -425,13 +442,14 @@ static int process_options(int argc, char * argv[])
 
         for (;;) {
             int option_index = 0;
-            static const char *short_options = "hr:t:b:p:x:";
+            static const char *short_options = "hr:t:c:b:p:x:";
             static const struct option long_options[] = {
                     {"help", no_argument, 0, 'h'},
                     {"devRx", required_argument, 0, 'r'},
                     {"protocol", required_argument, 0, 'x'},
                     {"devTx", required_argument, 0, 't'},
-                    {"bytes", required_argument, 0, 'b'},
+                    {"maxbytes", required_argument, 0, 'b'},
+                    {"minbytes", required_argument, 0, 'c'},
                     {"port", required_argument, 0, 'p'},
                     {0,0,0,0},
                     };
@@ -455,6 +473,10 @@ static int process_options(int argc, char * argv[])
             case 'x':
                 _opt_use_protocol = atoi(optarg);
                 _opt_use_protocol = !!_opt_use_protocol;
+                break;
+
+            case 'c':
+                _opt_min_bytes = atoi(optarg);
                 break;
 
             case 'b':
