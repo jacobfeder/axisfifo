@@ -480,7 +480,7 @@ static ssize_t axis_fifo_read(struct file *f, char __user *buf,
 			bytes_available, len);
 		reset_ip_core(fifo);
 		return -EINVAL;
-    }
+	}
 
 	if (!fifo->has_tkeep && bytes_available % sizeof(u32)) {
 		/* this probably can't happen unless IP
