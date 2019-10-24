@@ -79,7 +79,7 @@ struct axis_fifo {
 	int irq; /* interrupt */
 	struct resource *mem; /* physical memory */
 	void __iomem *base_addr; /* kernel space memory */
-    uint32_t fpga_addr;
+	uint32_t fpga_addr;
 
 	unsigned int rx_fifo_depth; /* max words in the receive fifo */
 	unsigned int tx_fifo_depth; /* max words in the transmit fifo */
@@ -269,8 +269,8 @@ static ssize_t core_reset_store(struct device *dev, struct device_attribute *att
 			 const char *buf, size_t count)
 {
 	struct axis_fifo *fifo = dev_get_drvdata(dev);
-    reset_ip_core(fifo);
-    return 1;
+	reset_ip_core(fifo);
+	return 1;
 }
 
 static DEVICE_ATTR_WO(core_reset);
@@ -286,9 +286,9 @@ static ssize_t rx_min_pkt_store(struct device *dev, struct device_attribute *att
 	if (rc < 0)
 		return rc;
 
-    fifo->rx_min_pkt_size = tmp;
+	fifo->rx_min_pkt_size = tmp;
 
-    return strlen(buf);
+	return strlen(buf);
 }
 
 static ssize_t rx_min_pkt_show(struct device *dev,
@@ -299,10 +299,10 @@ static ssize_t rx_min_pkt_show(struct device *dev,
 	unsigned int len;
 	char tmp[32];
 
-    read_val = fifo->rx_min_pkt_size;
+	read_val = fifo->rx_min_pkt_size;
 	len =  snprintf(tmp, sizeof(tmp), "0x%x\n", read_val);
 	memcpy(buf, tmp, len);
-    return len;
+	return len;
 }
 
 static DEVICE_ATTR_RW(rx_min_pkt);
@@ -318,9 +318,9 @@ static ssize_t tx_max_pkt_store(struct device *dev, struct device_attribute *att
 	if (rc < 0)
 		return rc;
 
-    fifo->tx_max_pkt_size = tmp;
+	fifo->tx_max_pkt_size = tmp;
 
-    return strlen(buf);
+	return strlen(buf);
 }
 
 static ssize_t tx_max_pkt_show(struct device *dev,
@@ -331,10 +331,10 @@ static ssize_t tx_max_pkt_show(struct device *dev,
 	unsigned int len;
 	char tmp[32];
 
-    read_val = fifo->tx_max_pkt_size;
+	read_val = fifo->tx_max_pkt_size;
 	len =  snprintf(tmp, sizeof(tmp), "0x%x\n", read_val);
 	memcpy(buf, tmp, len);
-    return len;
+	return len;
 }
 
 static DEVICE_ATTR_RW(tx_max_pkt);
@@ -353,9 +353,9 @@ static struct attribute *axis_fifo_attrs[] = {
 	&dev_attr_srr.attr,
 	&dev_attr_tdr.attr,
 	&dev_attr_rdr.attr,
-    &dev_attr_core_reset.attr,
-    &dev_attr_tx_max_pkt.attr,
-    &dev_attr_rx_min_pkt.attr,
+	&dev_attr_core_reset.attr,
+	&dev_attr_tx_max_pkt.attr,
+	&dev_attr_rx_min_pkt.attr,
 	NULL,
 };
 
@@ -534,7 +534,7 @@ static ssize_t axis_fifo_read(struct file *f, char __user *buf,
 				return -EFAULT;
 			}
 		}
-    }
+	}	
 
 	return bytes_available;
 }
@@ -914,7 +914,7 @@ static const struct file_operations fops = {
 	.owner = THIS_MODULE,
 	.open = axis_fifo_open,
 	.release = axis_fifo_close,
-    .unlocked_ioctl = axis_fifo_ioctl,
+	.unlocked_ioctl = axis_fifo_ioctl,
 	.read = axis_fifo_read,
 	.write = axis_fifo_write,
 	.poll = axis_poll
@@ -1024,7 +1024,7 @@ static int axis_fifo_probe(struct platform_device *pdev)
 	}
 	dev_dbg(fifo->dt_device, "got memory location [0x%pa - 0x%pa]\n",
 		&fifo->mem->start, &fifo->mem->end);
-    fifo->fpga_addr = fifo->mem->start;
+	fifo->fpga_addr = fifo->mem->start;
 
 	/* map physical memory to kernel virtual address space */
 	fifo->base_addr = ioremap(fifo->mem->start, resource_size(fifo->mem));
