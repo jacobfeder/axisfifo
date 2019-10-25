@@ -36,6 +36,7 @@
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
 
+#include "axis-fifo.h"
 /* ----------------------------
  *       driver parameters
  * ----------------------------
@@ -45,60 +46,6 @@
 
 #define READ_BUF_SIZE 128U /* read buffer length in words */
 #define WRITE_BUF_SIZE 128U /* write buffer length in words */
-/* #define AXIS_FIFO_DEBUG_PRINT */
-
-/* ----------------------------
- *     IP register offsets
- * ----------------------------
- */
-
-#define XLLF_ISR_OFFSET  0x00000000  /* Interrupt Status */
-#define XLLF_IER_OFFSET  0x00000004  /* Interrupt Enable */
-
-#define XLLF_TDFR_OFFSET 0x00000008  /* Transmit Reset */
-#define XLLF_TDFV_OFFSET 0x0000000c  /* Transmit Vacancy */
-#define XLLF_TDFD_OFFSET 0x00000010  /* Transmit Data */
-#define XLLF_TLR_OFFSET  0x00000014  /* Transmit Length */
-
-#define XLLF_RDFR_OFFSET 0x00000018  /* Receive Reset */
-#define XLLF_RDFO_OFFSET 0x0000001c  /* Receive Occupancy */
-#define XLLF_RDFD_OFFSET 0x00000020  /* Receive Data */
-#define XLLF_RLR_OFFSET  0x00000024  /* Receive Length */
-#define XLLF_SRR_OFFSET  0x00000028  /* Local Link Reset */
-#define XLLF_TDR_OFFSET  0x0000002C  /* Transmit Destination */
-#define XLLF_RDR_OFFSET  0x00000030  /* Receive Destination */
-
-/* ----------------------------
- *     reset register masks
- * ----------------------------
- */
-
-#define XLLF_RDFR_RESET_MASK        0x000000a5 /* receive reset value */
-#define XLLF_TDFR_RESET_MASK        0x000000a5 /* Transmit reset value */
-#define XLLF_SRR_RESET_MASK         0x000000a5 /* Local Link reset value */
-
-/* ----------------------------
- *       interrupt masks
- * ----------------------------
- */
-
-#define XLLF_INT_RPURE_MASK       0x80000000 /* Receive under-read */
-#define XLLF_INT_RPORE_MASK       0x40000000 /* Receive over-read */
-#define XLLF_INT_RPUE_MASK        0x20000000 /* Receive underrun (empty) */
-#define XLLF_INT_TPOE_MASK        0x10000000 /* Transmit overrun */
-#define XLLF_INT_TC_MASK          0x08000000 /* Transmit complete */
-#define XLLF_INT_RC_MASK          0x04000000 /* Receive complete */
-#define XLLF_INT_TSE_MASK         0x02000000 /* Transmit length mismatch */
-#define XLLF_INT_TRC_MASK         0x01000000 /* Transmit reset complete */
-#define XLLF_INT_RRC_MASK         0x00800000 /* Receive reset complete */
-#define XLLF_INT_TFPF_MASK        0x00400000 /* Tx FIFO Programmable Full */
-#define XLLF_INT_TFPE_MASK        0x00200000 /* Tx FIFO Programmable Empty */
-#define XLLF_INT_RFPF_MASK        0x00100000 /* Rx FIFO Programmable Full */
-#define XLLF_INT_RFPE_MASK        0x00080000 /* Rx FIFO Programmable Empty */
-#define XLLF_INT_ALL_MASK         0xfff80000 /* All the ints */
-#define XLLF_INT_ERROR_MASK       0xf2000000 /* Error status ints */
-#define XLLF_INT_RXERROR_MASK     0xe0000000 /* Receive Error status ints */
-#define XLLF_INT_TXERROR_MASK     0x12000000 /* Transmit Error status ints */
 
 /* ----------------------------
  *           globals
@@ -132,11 +79,12 @@ struct axis_fifo {
 	int irq; /* interrupt */
 	struct resource *mem; /* physical memory */
 	void __iomem *base_addr; /* kernel space memory */
+	uint32_t fpga_addr;
 
 	unsigned int rx_fifo_depth; /* max words in the receive fifo */
 	unsigned int tx_fifo_depth; /* max words in the transmit fifo */
-    	unsigned int rx_fifo_pf_thresh; /* programmable full threshold for rx */
-    	unsigned int tx_fifo_pf_thresh; /* programmable full threshold for tx */
+	unsigned int rx_fifo_pf_thresh; /* programmable full threshold for rx */
+	unsigned int tx_fifo_pf_thresh; /* programmable full threshold for tx */
 	unsigned int rx_fifo_pe_thresh; /* programmable empty threshold for rx */
 	unsigned int tx_fifo_pe_thresh; /* programmable empty threshold for tx */
 	unsigned int tx_max_pkt_size; /* used to trigger poll events */
@@ -157,6 +105,13 @@ struct axis_fifo {
 	dev_t devt; /* our char device number */
 	struct cdev char_device; /* our char device */
 };
+
+/* ----------------------------
+ * Function Prototypes
+ * ----------------------------
+ */
+/* required for sysfs */
+static void reset_ip_core(struct axis_fifo *fifo);
 
 /* ----------------------------
  *         sysfs entries
@@ -310,6 +265,80 @@ static ssize_t rdr_show(struct device *dev,
 
 static DEVICE_ATTR_RO(rdr);
 
+static ssize_t core_reset_store(struct device *dev, struct device_attribute *attr,
+			 const char *buf, size_t count)
+{
+	struct axis_fifo *fifo = dev_get_drvdata(dev);
+	reset_ip_core(fifo);
+	return 1;
+}
+
+static DEVICE_ATTR_WO(core_reset);
+
+static ssize_t rx_min_pkt_store(struct device *dev, struct device_attribute *attr,
+			 const char *buf, size_t count)
+{
+	struct axis_fifo *fifo = dev_get_drvdata(dev);
+	unsigned long tmp;
+	int rc;
+
+	rc = kstrtoul(buf, 0, &tmp);
+	if (rc < 0)
+		return rc;
+
+	fifo->rx_min_pkt_size = tmp;
+
+	return strlen(buf);
+}
+
+static ssize_t rx_min_pkt_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct axis_fifo *fifo = dev_get_drvdata(dev);
+	unsigned int read_val;
+	unsigned int len;
+	char tmp[32];
+
+	read_val = fifo->rx_min_pkt_size;
+	len =  snprintf(tmp, sizeof(tmp), "0x%x\n", read_val);
+	memcpy(buf, tmp, len);
+	return len;
+}
+
+static DEVICE_ATTR_RW(rx_min_pkt);
+
+static ssize_t tx_max_pkt_store(struct device *dev, struct device_attribute *attr,
+			 const char *buf, size_t count)
+{
+	struct axis_fifo *fifo = dev_get_drvdata(dev);
+	unsigned long tmp;
+	int rc;
+
+	rc = kstrtoul(buf, 0, &tmp);
+	if (rc < 0)
+		return rc;
+
+	fifo->tx_max_pkt_size = tmp;
+
+	return strlen(buf);
+}
+
+static ssize_t tx_max_pkt_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct axis_fifo *fifo = dev_get_drvdata(dev);
+	unsigned int read_val;
+	unsigned int len;
+	char tmp[32];
+
+	read_val = fifo->tx_max_pkt_size;
+	len =  snprintf(tmp, sizeof(tmp), "0x%x\n", read_val);
+	memcpy(buf, tmp, len);
+	return len;
+}
+
+static DEVICE_ATTR_RW(tx_max_pkt);
+
 static struct attribute *axis_fifo_attrs[] = {
 	&dev_attr_isr.attr,
 	&dev_attr_ier.attr,
@@ -324,6 +353,9 @@ static struct attribute *axis_fifo_attrs[] = {
 	&dev_attr_srr.attr,
 	&dev_attr_tdr.attr,
 	&dev_attr_rdr.attr,
+	&dev_attr_core_reset.attr,
+	&dev_attr_tx_max_pkt.attr,
+	&dev_attr_rx_min_pkt.attr,
 	NULL,
 };
 
@@ -502,7 +534,7 @@ static ssize_t axis_fifo_read(struct file *f, char __user *buf,
 				return -EFAULT;
 			}
 		}
-	}
+	}	
 
 	return bytes_available;
 }
@@ -626,6 +658,112 @@ static ssize_t axis_fifo_write(struct file *f, const char __user *buf,
         return (ssize_t)copiedBytes;
 }
 
+
+static DEFINE_MUTEX(ioctl_lock);
+static long axis_fifo_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
+{
+    long rc;
+    void *__user arg_ptr;
+    uint32_t temp_reg;
+    struct axis_fifo_kern_regInfo regInfo;
+	struct axis_fifo *fifo = (struct axis_fifo *)f->private_data;
+
+    if (mutex_lock_interruptible(&ioctl_lock))
+        return -EINTR;
+
+    // Coerce the arguement as a userspace pointer
+    arg_ptr = (void __user *)arg;
+    temp_reg = 0;
+
+    // Verify that this IOCTL is intended for our device, and is in range
+    if (_IOC_TYPE(cmd) != AXIS_FIFO_IOCTL_MAGIC) {
+        dev_err(fifo->dt_device, "IOCTL command magic number does not match.\n");
+        return -ENOTTY;
+    } else if (_IOC_NR(cmd) >= AXIS_FIFO_NUM_IOCTLS) {
+        dev_err(fifo->dt_device, "IOCTL command is out of range for this device.\n");
+        return -ENOTTY;
+    }
+
+    // Perform the specified command
+    switch (cmd) {
+        case AXIS_FIFO_GET_REG:
+            if (copy_from_user(&regInfo, arg_ptr, sizeof(regInfo))) {
+                dev_err(fifo->dt_device, "unable to copy status reg to userspace\n");
+                return -EFAULT;
+            }
+            regInfo.regVal = ioread32(fifo->base_addr + regInfo.regNo);
+            if (copy_to_user(arg_ptr, &regInfo, sizeof(regInfo))) {
+                dev_err(fifo->dt_device, "unable to copy status reg to userspace\n");
+                return -EFAULT;
+            }
+            rc = 0;
+            break;
+
+        case AXIS_FIFO_SET_REG:
+            if (copy_from_user(&regInfo, arg_ptr, sizeof(regInfo))) {
+                dev_err(fifo->dt_device, "unable to copy status reg to userspace\n");
+                return -EFAULT;
+            }
+            iowrite32(regInfo.regVal, fifo->base_addr + regInfo.regNo);
+            rc = 0;
+            break;
+
+        case AXIS_FIFO_GET_TX_MAX_PKT:
+            temp_reg = fifo->tx_max_pkt_size;
+            if (copy_to_user(arg_ptr, &temp_reg, sizeof(temp_reg))) {
+                dev_err(fifo->dt_device, "unable to copy status reg to userspace\n");
+                return -EFAULT;
+            }
+            rc = 0;
+            break;
+
+        case AXIS_FIFO_SET_TX_MAX_PKT:
+            if (copy_from_user(&temp_reg, arg_ptr, sizeof(temp_reg))) {
+                dev_err(fifo->dt_device, "unable to copy status reg to userspace\n");
+                return -EFAULT;
+            }
+            fifo->tx_max_pkt_size = temp_reg;
+            rc = 0;
+            break;
+
+        case AXIS_FIFO_GET_RX_MIN_PKT:
+            temp_reg = fifo->rx_min_pkt_size;
+            if (copy_to_user(arg_ptr, &temp_reg, sizeof(temp_reg))) {
+                dev_err(fifo->dt_device, "unable to copy status reg to userspace\n");
+                return -EFAULT;
+            }
+            rc = 0;
+            break;
+
+        case AXIS_FIFO_SET_RX_MIN_PKT:
+            if (copy_from_user(&temp_reg, arg_ptr, sizeof(temp_reg))) {
+                dev_err(fifo->dt_device, "unable to copy status reg to userspace\n");
+                return -EFAULT;
+            }
+            fifo->rx_min_pkt_size = temp_reg;
+            rc = 0;
+            break;
+
+        case AXIS_FIFO_GET_FPGA_ADDR:
+            temp_reg = fifo->fpga_addr;
+            if (copy_to_user(arg_ptr, &temp_reg, sizeof(temp_reg))) {
+                dev_err(fifo->dt_device, "unable to copy status reg to userspace\n");
+                return -EFAULT;
+            }
+            rc = 0;
+            break;
+
+        case AXIS_FIFO_RESET_IP:
+            reset_ip_core(fifo);
+            break;
+
+        default:
+            return -ENOTTY;
+    }
+    
+    mutex_unlock(&ioctl_lock);
+    return rc;
+}
 static irqreturn_t axis_fifo_irq(int irq, void *dw)
 {
 	struct axis_fifo *fifo = (struct axis_fifo *)dw;
@@ -776,6 +914,7 @@ static const struct file_operations fops = {
 	.owner = THIS_MODULE,
 	.open = axis_fifo_open,
 	.release = axis_fifo_close,
+	.unlocked_ioctl = axis_fifo_ioctl,
 	.read = axis_fifo_read,
 	.write = axis_fifo_write,
 	.poll = axis_poll
@@ -885,6 +1024,7 @@ static int axis_fifo_probe(struct platform_device *pdev)
 	}
 	dev_dbg(fifo->dt_device, "got memory location [0x%pa - 0x%pa]\n",
 		&fifo->mem->start, &fifo->mem->end);
+	fifo->fpga_addr = fifo->mem->start;
 
 	/* map physical memory to kernel virtual address space */
 	fifo->base_addr = ioremap(fifo->mem->start, resource_size(fifo->mem));
