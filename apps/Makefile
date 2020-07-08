@@ -1,6 +1,6 @@
 CC ?= $(CROSS_COMPILE)gcc
 CFLAGS ?= -Wall -Wextra
-LDFLAGS ?=
+LDFLAGS ?= -lpthread
 CFLAGS += 
 
 BIN := axis-fifo-test axis-fifo-eth-loop
