@@ -3,7 +3,7 @@ CFLAGS ?= -Wall -Wextra
 LDFLAGS ?=
 CFLAGS +=
 
-BIN := axis-fifo-test axis-fifo-ethernet-bridge
+BIN := axis-fifo-test axis-fifo-ethernet-bridge axis-fifo-echo-test
 
 all: $(BIN)
 
