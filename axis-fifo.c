@@ -369,16 +369,6 @@ static const struct attribute_group axis_fifo_attrs_group = {
  * ----------------------------
  */
 
-static void reset_tx(struct axis_fifo *fifo)
-{
-    iowrite32(XLLF_TDFR_RESET_MASK, fifo->base_addr + XLLF_TDFR_OFFSET);
-}
-
-static void reset_rx(struct axis_fifo *fifo)
-{
-    iowrite32(XLLF_RDFR_RESET_MASK, fifo->base_addr + XLLF_RDFR_OFFSET);
-}
-
 static void reset_ip_core(struct axis_fifo *fifo)
 {
     iowrite32(XLLF_SRR_RESET_MASK, fifo->base_addr + XLLF_SRR_OFFSET);
@@ -732,6 +722,15 @@ static long axis_fifo_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
             rc = 0;
             break;
 
+        case AXIS_FIFO_GET_RX_OCCUPANCY:
+            temp_reg = ioread32(fifo->base_addr + XLLF_RDFO_OFFSET);
+            if (copy_to_user(arg_ptr, &temp_reg, sizeof(temp_reg))) {
+                dev_err(fifo->dt_device, "unable to copy status reg to userspace\n");
+                return -EFAULT;
+            }
+            rc = 0;
+            break;
+
         case AXIS_FIFO_GET_TX_MAX_PKT:
             temp_reg = fifo->tx_max_pkt_size;
             if (copy_to_user(arg_ptr, &temp_reg, sizeof(temp_reg))) {
@@ -853,7 +852,7 @@ static irqreturn_t axis_fifo_irq(int irq, void *dw)
             /* receive fifo under-read error interrupt */
             dev_err(fifo->dt_device,
                 "receive under-read interrupt, reset rx fifo\n");
-            reset_rx(fifo);
+            iowrite32(XLLF_RDFR_RESET_MASK, fifo->base_addr + XLLF_RDFR_OFFSET);
 
             iowrite32(XLLF_INT_RPURE_MASK & XLLF_INT_ALL_MASK,
                   fifo->base_addr + XLLF_ISR_OFFSET);
@@ -861,7 +860,7 @@ static irqreturn_t axis_fifo_irq(int irq, void *dw)
             /* receive over-read error interrupt */
             dev_err(fifo->dt_device,
                 "receive over-read interrupt, reset rx fifo\n");
-                reset_rx(fifo);
+            iowrite32(XLLF_RDFR_RESET_MASK, fifo->base_addr + XLLF_RDFR_OFFSET);
 
             iowrite32(XLLF_INT_RPORE_MASK & XLLF_INT_ALL_MASK,
                   fifo->base_addr + XLLF_ISR_OFFSET);
@@ -869,7 +868,7 @@ static irqreturn_t axis_fifo_irq(int irq, void *dw)
             /* receive underrun error interrupt */
             dev_err(fifo->dt_device,
                 "receive underrun error interrupt, reset rx fifo\n");
-            reset_rx(fifo);
+            iowrite32(XLLF_RDFR_RESET_MASK, fifo->base_addr + XLLF_RDFR_OFFSET);
 
             iowrite32(XLLF_INT_RPUE_MASK & XLLF_INT_ALL_MASK,
                   fifo->base_addr + XLLF_ISR_OFFSET);
@@ -877,7 +876,7 @@ static irqreturn_t axis_fifo_irq(int irq, void *dw)
             /* transmit overrun error interrupt */
             dev_err(fifo->dt_device,
                 "transmit overrun error interrupt, reset tx fifo\n");
-            reset_tx(fifo);
+            iowrite32(XLLF_TDFR_RESET_MASK, fifo->base_addr + XLLF_TDFR_OFFSET);
 
             iowrite32(XLLF_INT_TPOE_MASK & XLLF_INT_ALL_MASK,
                   fifo->base_addr + XLLF_ISR_OFFSET);
