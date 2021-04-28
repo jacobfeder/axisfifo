@@ -38,19 +38,14 @@
  *----------------------------------------------------------------------------*/
 #define TCP_PROTOCOL 1
 #define UDP_PROTOCOL 0
+#define DEF_PROTOCOL UDP_PROTOCOL
 #define MAX_BUF_SIZE_BYTES 1500
 #define DEF_PORT_NO    7777
 #define DEF_DEV_TX "/dev/axis_fifo_0x43c10000"
 #define DEF_DEV_RX "/dev/axis_fifo_0x43c10000"
-#define DEF_PROTOCOL UDP_PROTOCOL
 
-/* #define DEBUG */
-#if defined(DEBUG)
-        #define DEBUG_PRINT(fmt, args...) printf("DEBUG %s:%d(): " fmt, \
-                __func__, __LINE__, ##args)
-#else
-        #define DEBUG_PRINT(fmt, args...) /* do nothing */
-#endif
+#define DEBUG_PRINT(fmt, args...) printf("DEBUG %s:%d(): " fmt, \
+        __func__, __LINE__, ##args)
 
 struct thread_data {
     int rc;
@@ -68,6 +63,7 @@ static int writeFifoFd;
 static int readFifoFd;
 static int serverFd;
 static int tcpSocketFd;
+static int _opt_verbose;
 
 /* for udp packets */
 static struct sockaddr_in cliaddr;
@@ -91,8 +87,6 @@ static void quit(void);
 int main(int argc, char **argv)
 {
     process_options(argc, argv);
-    sleep(1);
-    printf("Begin...\n");
 
     int rc;
     struct sockaddr_in servAddr;
@@ -139,7 +133,7 @@ int main(int argc, char **argv)
     addrlen=sizeof(servAddr);
     if (_opt_use_protocol == TCP_PROTOCOL) {
         if ((serverFd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
-            DEBUG_PRINT("socket failed");
+            printf("socket failed");
             exit(EXIT_FAILURE);
         }
     } else {
@@ -152,7 +146,7 @@ int main(int argc, char **argv)
 
     if (setsockopt(serverFd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT,
                   &opt, sizeof(opt))) {
-        DEBUG_PRINT("setsockopt");
+        printf("setsockopt");
         exit(EXIT_FAILURE);
     }
 
@@ -161,24 +155,23 @@ int main(int argc, char **argv)
     servAddr.sin_addr.s_addr = htonl(INADDR_ANY);
     servAddr.sin_port = htons(_opt_sock_port);
 
-    if (bind(serverFd, (struct sockaddr *)&servAddr,
-            sizeof(servAddr))<0) {
-        DEBUG_PRINT("bind failed");
+    if (bind(serverFd, (struct sockaddr *)&servAddr, sizeof(servAddr))<0) {
+        printf("bind failed");
         exit(EXIT_FAILURE);
     }
 
     if (_opt_use_protocol == TCP_PROTOCOL) {
         if (listen(serverFd, 3) < 0) {
-            DEBUG_PRINT("listen");
+            printf("listen");
             exit(EXIT_FAILURE);
         }
 
         if ((tcpSocketFd = accept(serverFd, (struct sockaddr *)&servAddr,
                 (socklen_t*)&addrlen))<0) {
-            DEBUG_PRINT("accept");
+            printf("accept");
             exit(EXIT_FAILURE);
         } else {
-            DEBUG_PRINT("accepted client\n\r");
+            printf("accepted client\n\r");
         }
     }
 
@@ -198,7 +191,7 @@ int main(int argc, char **argv)
     /* perform noops */
     while (running) {
        if (socket_read_error || socket_write_error) {
-           DEBUG_PRINT("Error %s socket...\n",socket_read_error ? "reading" : "writing");
+           printf("Error %s socket...\n",socket_read_error ? "reading" : "writing");
            goto ret;
        }
        sleep(1);
@@ -246,7 +239,8 @@ static void *ethn_rx_thread_fn(void *data)
         }
         if (bytesSock > 0) {
             packets_rx++;
-            DEBUG_PRINT("bytes from socket %d\n",bytesSock);
+            if (_opt_verbose)
+                DEBUG_PRINT("bytes from socket %d\n",bytesSock);
         } else if (bytesSock == 0) {
             DEBUG_PRINT("Connection lost\n");
             socket_read_error = 1;
@@ -269,7 +263,8 @@ static void *ethn_rx_thread_fn(void *data)
 
         bytesFifo = write(writeFifoFd, buf, bytesSock);
         if (bytesFifo > 0) {
-            DEBUG_PRINT("bytes to fifo %d\n",bytesFifo);
+            if (_opt_verbose)
+                DEBUG_PRINT("bytes to fifo %d\n",bytesFifo);
             packets_tx++;
         } else {
             perror("write");
@@ -299,12 +294,14 @@ static void *fifo_rx_thread_fn(void *data)
     while (running) {
         bytesFifo = read(readFifoFd, buf, MAX_BUF_SIZE_BYTES);
         if (bytesFifo > 0) {
-            DEBUG_PRINT("bytes from fifo %d\n",bytesFifo);
+            if (_opt_verbose)
+                DEBUG_PRINT("bytes from fifo %d\n",bytesFifo);
             packets_rx++;
             if (_opt_use_protocol == TCP_PROTOCOL) {
                 bytesSock = write(tcpSocketFd, buf, bytesFifo);
                 if (bytesSock > 0) {
-                    DEBUG_PRINT("bytes to socket %d\n",bytesSock);
+                    if (_opt_verbose)
+                        DEBUG_PRINT("bytes to socket %d\n",bytesSock);
                     packets_tx++;
                 } else {
                     perror("write");
@@ -316,7 +313,8 @@ static void *fifo_rx_thread_fn(void *data)
                         MSG_CONFIRM, (const struct sockaddr *)&cliaddr,
                         cliaddrlen);
                 if (bytesSock > 0) {
-                    DEBUG_PRINT("bytes to socket %d\n",bytesSock);
+                    if (_opt_verbose)
+                        DEBUG_PRINT("bytes to socket %d\n",bytesSock);
                     packets_tx++;
                 } else {
                     perror("write");
@@ -353,7 +351,8 @@ static void display_help(char * progName)
            "  -t, --devTx    Device to use ... /dev/axis_fifo_0x43c10000\n"
            "  -r, --devRx    Device to use ... /dev/axis_fifo_0x43c10000\n"
            "  -p, --port     Port number to bind to\n"
-           "  -x, --tcp      udp used by default, pass this flag to use tcp\n\n"
+           "  -x, --tcp      UDP used by default, pass this flag to use TCP\n"
+           "  -v, --verbose  Turn on Debug prints, will affect performance\n\n"
            " Creates a UDP (or TCP) server that waits for data passed to the port\n"
            " and then forwards the data to the attached transmit axis fifo device.\n"
            " Data incoming from the receive axis fifo is pushed back to the client's\n"
@@ -371,11 +370,13 @@ static void print_opts()
             "DevTX          : %s\n"
             "DevRx          : %s\n"
             "Protocol       : %s\n"
+            "Verbose        : %s\n"
            ,
            _opt_sock_port,
            _opt_dev_tx,
            _opt_dev_rx,
-           _opt_use_protocol ? "TCP" : "UDP"
+           _opt_use_protocol ? "TCP" : "UDP",
+           _opt_verbose ? "On" : "Off"
           );
 }
 
@@ -383,14 +384,16 @@ static int process_options(int argc, char * argv[])
 {
         strcpy(_opt_dev_tx,DEF_DEV_TX);
         strcpy(_opt_dev_rx,DEF_DEV_RX);
+        _opt_verbose = 0;
 
         for (;;) {
             int option_index = 0;
-            static const char *short_options = "hr:t:p:x:";
+            static const char *short_options = "htvr:p:x:";
             static const struct option long_options[] = {
                     {"help", no_argument, 0, 'h'},
-                    {"devRx", required_argument, 0, 'r'},
+                    {"verbose", no_argument, 0, 'v'},
                     {"tcp", no_argument, 0, 'x'},
+                    {"devRx", required_argument, 0, 'r'},
                     {"devTx", required_argument, 0, 't'},
                     {"port", required_argument, 0, 'p'},
                     {0,0,0,0},
@@ -404,29 +407,33 @@ static int process_options(int argc, char * argv[])
             }
 
             switch (c) {
-            case 't':
-                strcpy(_opt_dev_tx, optarg);
-                break;
+                case 't':
+                    strcpy(_opt_dev_tx, optarg);
+                    break;
 
-            case 'r':
-                strcpy(_opt_dev_rx, optarg);
-                break;
+                case 'r':
+                    strcpy(_opt_dev_rx, optarg);
+                    break;
 
-            case 'x':
-                _opt_use_protocol = !!_opt_use_protocol;
-                break;
+                case 'x':
+                    _opt_use_protocol = TCP_PROTOCOL;
+                    break;
 
-            case 'p':
-                _opt_sock_port = atoi(optarg);
-                break;
+                case 'v':
+                    _opt_verbose = 1;
+                    break;
 
-            default:
-            case 'h':
-                display_help(argv[0]);
-                exit(0);
-                break;
-                }
-        }
+                case 'p':
+                    _opt_sock_port = atoi(optarg);
+                    break;
+
+                default:
+                case 'h':
+                    display_help(argv[0]);
+                    exit(0);
+                    break;
+                    }
+            }
 
         print_opts();
         return 0;
