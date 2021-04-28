@@ -80,6 +80,10 @@ struct axis_fifo {
     struct resource *mem; /* physical memory */
     void __iomem *base_addr; /* kernel space memory */
     uint32_t fpga_addr;
+    uint32_t tx_pkts;
+    uint32_t rx_pkts;
+    uint32_t rx_bytes;
+    uint32_t tx_bytes;
 
     unsigned int rx_fifo_depth; /* max words in the receive fifo */
     unsigned int tx_fifo_depth; /* max words in the transmit fifo */
@@ -148,6 +152,56 @@ static ssize_t sysfs_read(struct device *dev, char *buf,
 
     return len;
 }
+
+static ssize_t tx_bytes_show(struct device *dev,
+             struct device_attribute *attr, char *buf)
+{
+    unsigned int len;
+    char tmp[32];
+    struct axis_fifo *fifo = dev_get_drvdata(dev);
+    len =  snprintf(tmp, sizeof(tmp), "0x%x\n", fifo->tx_bytes);
+    memcpy(buf, tmp, len);
+    return len;
+}
+static DEVICE_ATTR_RO(tx_bytes);
+
+static ssize_t rx_bytes_show(struct device *dev,
+             struct device_attribute *attr, char *buf)
+{
+    unsigned int len;
+    char tmp[32];
+    struct axis_fifo *fifo = dev_get_drvdata(dev);
+    len =  snprintf(tmp, sizeof(tmp), "0x%x\n", fifo->rx_bytes);
+    memcpy(buf, tmp, len);
+    return len;
+}
+static DEVICE_ATTR_RO(rx_bytes);
+
+
+static ssize_t rx_pkts_show(struct device *dev,
+             struct device_attribute *attr, char *buf)
+{
+    unsigned int len;
+    char tmp[32];
+    struct axis_fifo *fifo = dev_get_drvdata(dev);
+    len =  snprintf(tmp, sizeof(tmp), "0x%x\n", fifo->rx_pkts);
+    memcpy(buf, tmp, len);
+    return len;
+}
+static DEVICE_ATTR_RO(rx_pkts);
+
+static ssize_t tx_pkts_show(struct device *dev,
+             struct device_attribute *attr, char *buf)
+{
+    unsigned int len;
+    char tmp[32];
+    struct axis_fifo *fifo = dev_get_drvdata(dev);
+    len =  snprintf(tmp, sizeof(tmp), "0x%x\n", fifo->tx_pkts);
+    memcpy(buf, tmp, len);
+    return len;
+}
+static DEVICE_ATTR_RO(tx_pkts);
+
 
 static ssize_t isr_store(struct device *dev, struct device_attribute *attr,
              const char *buf, size_t count)
@@ -340,6 +394,10 @@ static ssize_t tx_max_pkt_show(struct device *dev,
 static DEVICE_ATTR_RW(tx_max_pkt);
 
 static struct attribute *axis_fifo_attrs[] = {
+    &dev_attr_tx_bytes.attr,
+    &dev_attr_rx_bytes.attr,
+    &dev_attr_rx_pkts.attr,
+    &dev_attr_tx_pkts.attr,
     &dev_attr_isr.attr,
     &dev_attr_ier.attr,
     &dev_attr_tdfr.attr,
@@ -536,6 +594,8 @@ static ssize_t axis_fifo_read(struct file *f, char __user *buf,
         }
     }
 
+    fifo->rx_pkts++;
+    fifo->rx_bytes += bytes_available;
     return bytes_available;
 }
 
@@ -660,6 +720,8 @@ static ssize_t axis_fifo_write(struct file *f, const char __user *buf,
     copiedBytes = (fifo->has_tkeep && !!leftover) ? (copied*sizeof(u32)+leftover) : (copied*sizeof(u32));
         iowrite32(copiedBytes, fifo->base_addr + XLLF_TLR_OFFSET);
 
+        fifo->tx_pkts++;
+        fifo->tx_bytes += copiedBytes;
         return (ssize_t)copiedBytes;
 }
 
@@ -698,6 +760,42 @@ static long axis_fifo_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
             }
             regInfo.regVal = ioread32(fifo->base_addr + regInfo.regNo);
             if (copy_to_user(arg_ptr, &regInfo, sizeof(regInfo))) {
+                dev_err(fifo->dt_device, "unable to copy status reg to userspace\n");
+                return -EFAULT;
+            }
+            rc = 0;
+            break;
+
+        case AXIS_FIFO_GET_RX_PKTS_READ:
+            temp_reg = fifo->rx_pkts;
+            if (copy_to_user(arg_ptr, &temp_reg, sizeof(temp_reg))) {
+                dev_err(fifo->dt_device, "unable to copy status reg to userspace\n");
+                return -EFAULT;
+            }
+            rc = 0;
+            break;
+
+        case AXIS_FIFO_GET_RX_BYTES_READ:
+            temp_reg = fifo->rx_bytes;
+            if (copy_to_user(arg_ptr, &temp_reg, sizeof(temp_reg))) {
+                dev_err(fifo->dt_device, "unable to copy status reg to userspace\n");
+                return -EFAULT;
+            }
+            rc = 0;
+            break;
+
+        case AXIS_FIFO_GET_TX_PKTS_SENT:
+            temp_reg = fifo->tx_pkts;
+            if (copy_to_user(arg_ptr, &temp_reg, sizeof(temp_reg))) {
+                dev_err(fifo->dt_device, "unable to copy status reg to userspace\n");
+                return -EFAULT;
+            }
+            rc = 0;
+            break;
+
+        case AXIS_FIFO_GET_TX_BYTES_SENT:
+            temp_reg = fifo->tx_bytes;
+            if (copy_to_user(arg_ptr, &temp_reg, sizeof(temp_reg))) {
                 dev_err(fifo->dt_device, "unable to copy status reg to userspace\n");
                 return -EFAULT;
             }
@@ -1068,6 +1166,10 @@ static int axis_fifo_probe(struct platform_device *pdev)
 
     dev_dbg(fifo->dt_device, "device name [%s]\n", device_name);
 
+    fifo->tx_pkts = 0;
+    fifo->rx_pkts = 0;
+    fifo->rx_bytes = 0;
+    fifo->tx_bytes = 0;
     /* ----------------------------
      *          init IP
      * ----------------------------
