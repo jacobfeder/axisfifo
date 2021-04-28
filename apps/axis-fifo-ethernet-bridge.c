@@ -37,8 +37,7 @@
  *----------------------------------------------------------------------------*/
 #define TCP_PROTOCOL 1
 #define UDP_PROTOCOL 0
-#define DEF_MAX_BUF_SIZE_BYTES 1102
-#define DEF_MIN_BUF_SIZE_BYTES 100
+#define MAX_BUF_SIZE_BYTES 1500
 #define DEF_PORT_NO    7777
 #define DEF_DEV_TX "/dev/axis_fifo_0x43c10000"
 #define DEF_DEV_RX "/dev/axis_fifo_0x43c10000"
@@ -62,7 +61,7 @@ pthread_t fifo_rx_thread;
 static volatile bool running = true;
 static int _opt_sock_port = DEF_PORT_NO;
 static int _opt_use_protocol = DEF_PROTOCOL;
-static int _opt_max_bytes = DEF_MAX_BUF_SIZE_BYTES;
+static int MAX_BUF_SIZE_BYTES = DEF_MAX_BUF_SIZE_BYTES;
 static int _opt_min_bytes = DEF_MIN_BUF_SIZE_BYTES;
 static char _opt_dev_tx[255];
 static char _opt_dev_rx[255];
@@ -134,24 +133,6 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    /* update rx_min_pkt so poll works as expected */
-    uint32_t minWords = (_opt_min_bytes / 4);
-    rc = ioctl(readFifoFd, AXIS_FIFO_SET_RX_MIN_PKT, &minWords);
-    if (rc) {
-        perror("ioctl");
-        return -1;
-    }
-
-    /* update tx_max_pkt so poll works as expected */
-    /* will only poll ready to write if there is enough buffer space */
-    /* for a full packet */
-    uint32_t maxWords = (_opt_max_bytes / 4);
-    rc = ioctl(readFifoFd, AXIS_FIFO_SET_TX_MAX_PKT, &maxWords);
-    if (rc) {
-        perror("ioctl");
-        return -1;
-    }
-
     /**********************************************/
     /* Start TCP Server and wait for a connection */
     /**********************************************/
@@ -218,7 +199,7 @@ int main(int argc, char **argv)
     /* perform noops */
     while (running) {
        if (socket_read_error || socket_write_error) {
-           DEBUG_PRINT("Error %s socket...\n",socket_read_error ? "reading" : "writing"); 
+           DEBUG_PRINT("Error %s socket...\n",socket_read_error ? "reading" : "writing");
            goto ret;
        }
        sleep(1);
@@ -244,67 +225,62 @@ static void *ethn_rx_thread_fn(void *data)
     ssize_t bytesSock;
     ssize_t bytesFifo;
     int packets_rx, packets_tx;
-    uint8_t buf[_opt_max_bytes+10];
-    struct pollfd fds[2];
+    uint8_t buf[MAX_BUF_SIZE_BYTES];
     int packetRead = 0;
+    uint32_t vacancy;
 
     /* shup up compiler */
     (void)data;
 
     memset(&cliaddr, 0, sizeof(cliaddr));
-    if (_opt_use_protocol == TCP_PROTOCOL)
-        fds[0].fd = tcpSocketFd;
-    else
-        fds[0].fd = serverFd;
-    fds[1].fd = writeFifoFd;
-    fds[0].events = POLLIN;
-    fds[1].events = POLLOUT;
 
     packets_rx = 0;
     packets_tx = 0;
 
     while (running) {
-        rc = poll(fds, 2, -1);
-
-        if (rc > 0) {
-            if(packetRead == 0 && (fds[0].revents & POLLIN)) {
-                if (_opt_use_protocol == TCP_PROTOCOL) {
-                    bytesSock = read(tcpSocketFd, buf, _opt_max_bytes);
-                } else {
-                    bytesSock = recvfrom(serverFd, buf, _opt_max_bytes,
-                            MSG_WAITALL, (struct sockaddr *)&cliaddr,
-                            &cliaddrlen);
-                    udpInit = 1;
-                }
-                if (bytesSock > 0) {
-                    packetRead = 1;
-                    packets_rx++;
-                    DEBUG_PRINT("bytes from socket %d\n",bytesSock);
-                } else if (bytesSock == 0) {
-                    DEBUG_PRINT("Connection lost\n");
-                    socket_read_error = 1;
-                    quit();
-                } else {
-                    perror("read");
-                    socket_read_error = 1;
-                    quit();
-                }
+            if (_opt_use_protocol == TCP_PROTOCOL) {
+                bytesSock = read(tcpSocketFd, buf, MAX_BUF_SIZE_BYTES);
+            } else {
+                bytesSock = recvfrom(serverFd, buf, MAX_BUF_SIZE_BYTES,
+                        MSG_WAITALL, (struct sockaddr *)&cliaddr,
+                        &cliaddrlen);
+                udpInit = 1;
+            }
+            if (bytesSock > 0) {
+                packetRead = 1;
+                packets_rx++;
+                DEBUG_PRINT("bytes from socket %d\n",bytesSock);
+            } else if (bytesSock == 0) {
+                DEBUG_PRINT("Connection lost\n");
+                socket_read_error = 1;
+                quit();
+            } else {
+                perror("read");
+                socket_read_error = 1;
+                quit();
             }
 
-            if (packetRead == 1 && (fds[1].revents & POLLOUT)) {
-                bytesFifo = write(writeFifoFd, buf, bytesSock);
-                if (bytesFifo > 0) {
-                    DEBUG_PRINT("bytes to fifo %d\n",bytesFifo);
-                    packets_tx++;
-                    packetRead = 0;
-                } else {
-                    perror("write");
-                    quit();
+            do {
+                rc = ioctl(readFifoFd, AXIS_FIFO_GET_TX_VACANCY, &vacancy);
+                if (rc) {
+                    perror("ioctl");
+                    return -1;
                 }
+                if (vacancy < bytesSock)
+                    usleep(100);
+            } while (vacancy < bytesSock);
+
+            bytesFifo = write(writeFifoFd, buf, bytesSock);
+            if (bytesFifo > 0) {
+                DEBUG_PRINT("bytes to fifo %d\n",bytesFifo);
+                packets_tx++;
+                packetRead = 0;
+            } else {
+                perror("write");
+                quit();
             }
         }
     }
-
     printf("ethernet packets rx : %d, fifo packets tx     : %d\n",packets_rx, packets_tx);
 
     return (void *)0;
@@ -316,71 +292,54 @@ static void *fifo_rx_thread_fn(void *data)
     ssize_t bytesSock;
     ssize_t bytesFifo;
     int packets_rx, packets_tx;
-    uint8_t buf[_opt_max_bytes+10];
-    struct pollfd fds[2];
+    uint8_t buf[MAX_BUF_SIZE_BYTES];
     int packetRead = 0;
 
     /* shup up compiler */
     (void)data;
 
     memset(&cliaddr, 0, sizeof(cliaddr));
-    if (_opt_use_protocol == TCP_PROTOCOL)
-        fds[0].fd = tcpSocketFd;
-    else
-        fds[0].fd = serverFd;
-    fds[1].fd = writeFifoFd;
-    fds[0].events = POLLOUT;
-    fds[1].events = POLLIN;
 
     packets_rx = 0;
     packets_tx = 0;
 
     while (running) {
-        rc = poll(fds, 2, -1);
+        bytesFifo = read(readFifoFd, buf, MAX_BUF_SIZE_BYTES);
+        if (bytesFifo > 0) {
+            packetRead = 1;
+            DEBUG_PRINT("bytes from fifo %d\n",bytesFifo);
+            packets_rx++;
+        } else {
+            perror("read");
+            quit();
+        }
 
-        if (rc > 0) {
-            if(packetRead == 0 && (fds[1].revents & POLLIN)) {
-                bytesFifo = read(readFifoFd, buf, _opt_max_bytes);
-                if (bytesFifo > 0) {
-                    packetRead = 1;
-                    DEBUG_PRINT("bytes from fifo %d\n",bytesFifo);
-                    packets_rx++;
-                } else {
-                    perror("read");
-                    quit();
-                }
+        if (_opt_use_protocol == TCP_PROTOCOL) {
+            bytesSock = write(tcpSocketFd, buf, bytesFifo);
+            if (bytesSock > 0) {
+                DEBUG_PRINT("bytes to socket %d\n",bytesSock);
+                packets_tx++;
+                packetRead = 0;
+            } else {
+                perror("write");
+                socket_write_error = 1;
+                quit();
             }
-
-            if (packetRead == 1 && (fds[0].revents & POLLOUT)) {
-                if (_opt_use_protocol == TCP_PROTOCOL) {
-                    bytesSock = write(tcpSocketFd, buf, bytesFifo);
-                    if (bytesSock > 0) {
-                        DEBUG_PRINT("bytes to socket %d\n",bytesSock);
-                        packets_tx++;
-                        packetRead = 0;
-                    } else {
-                        perror("write");
-                        socket_write_error = 1;
-                        quit();
-                    }
-                } else if (_opt_use_protocol == UDP_PROTOCOL && udpInit) {
-                    bytesSock = sendto(serverFd, buf, bytesFifo,
-                            MSG_CONFIRM, (const struct sockaddr *)&cliaddr,
-                            cliaddrlen);
-                    if (bytesSock > 0) {
-                        DEBUG_PRINT("bytes to socket %d\n",bytesSock);
-                        packets_tx++;
-                        packetRead = 0;
-                    } else {
-                        perror("write");
-                        socket_write_error = 1;
-                        quit();
-                    }
-                }
+        } else if (_opt_use_protocol == UDP_PROTOCOL && udpInit) {
+            bytesSock = sendto(serverFd, buf, bytesFifo,
+                    MSG_CONFIRM, (const struct sockaddr *)&cliaddr,
+                    cliaddrlen);
+            if (bytesSock > 0) {
+                DEBUG_PRINT("bytes to socket %d\n",bytesSock);
+                packets_tx++;
+                packetRead = 0;
+            } else {
+                perror("write");
+                socket_write_error = 1;
+                quit();
             }
         }
     }
-
     printf("fifo packets rx     : %d, ethernet packets tx : %d\n",packets_rx, packets_tx);
 
     return (void *)0;
@@ -407,10 +366,8 @@ static void display_help(char * progName)
            "  -h, --help     Print this menu\n"
            "  -t, --devTx    Device to use ... /dev/axis_fifo_0x43c10000\n"
            "  -r, --devRx    Device to use ... /dev/axis_fifo_0x43c10000\n"
-           "  -b, --maxbytes Maximum number of bytes to expect in a packet\n"
-           "  -c, --minbytes Minimum number of bytes to expect in a packet\n"
            "  -p, --port     Port number to bind to\n"
-           "  -x, --protocol 0 for udp, 1 for tcp\n"
+           "  -x, --tcp      udp used by default, pass this flag to use tcp\n"
            ,
            progName
           );
@@ -420,15 +377,11 @@ static void print_opts()
 {
     printf("Options : \n"
             "Port           : %d\n"
-            "Max Bytes      : %d\n"
-            "Min Bytes      : %d\n"
             "DevTX          : %s\n"
             "DevRx          : %s\n"
             "Protocol       : %s\n"
            ,
            _opt_sock_port,
-           _opt_max_bytes,
-           _opt_min_bytes,
            _opt_dev_tx,
            _opt_dev_rx,
            _opt_use_protocol ? "TCP" : "UDP"
@@ -442,14 +395,12 @@ static int process_options(int argc, char * argv[])
 
         for (;;) {
             int option_index = 0;
-            static const char *short_options = "hr:t:c:b:p:x:";
+            static const char *short_options = "hr:t:p:x:";
             static const struct option long_options[] = {
                     {"help", no_argument, 0, 'h'},
                     {"devRx", required_argument, 0, 'r'},
-                    {"protocol", required_argument, 0, 'x'},
+                    {"tcp", no_argument, 0, 'x'},
                     {"devTx", required_argument, 0, 't'},
-                    {"maxbytes", required_argument, 0, 'b'},
-                    {"minbytes", required_argument, 0, 'c'},
                     {"port", required_argument, 0, 'p'},
                     {0,0,0,0},
                     };
@@ -471,16 +422,7 @@ static int process_options(int argc, char * argv[])
                 break;
 
             case 'x':
-                _opt_use_protocol = atoi(optarg);
                 _opt_use_protocol = !!_opt_use_protocol;
-                break;
-
-            case 'c':
-                _opt_min_bytes = atoi(optarg);
-                break;
-
-            case 'b':
-                _opt_max_bytes = atoi(optarg);
                 break;
 
             case 'p':
