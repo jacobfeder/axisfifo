@@ -353,7 +353,12 @@ static void display_help(char * progName)
            "  -t, --devTx    Device to use ... /dev/axis_fifo_0x43c10000\n"
            "  -r, --devRx    Device to use ... /dev/axis_fifo_0x43c10000\n"
            "  -p, --port     Port number to bind to\n"
-           "  -x, --tcp      udp used by default, pass this flag to use tcp\n"
+           "  -x, --tcp      udp used by default, pass this flag to use tcp\n\n"
+           " Creates a UDP (or TCP) server that waits for data passed to the port\n"
+           " and then forwards the data to the attached transmit axis fifo device.\n"
+           " Data incoming from the receive axis fifo is pushed back to the client's\n"
+           " IP Address and same port.\n"
+           " When using UDP no data will be sent to client until a message is received.\n"
            ,
            progName
           );
