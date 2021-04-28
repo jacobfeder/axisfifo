@@ -27,6 +27,7 @@
 #include <signal.h>
 #include <time.h>
 #include <poll.h>
+#include <sys/ioctl.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -61,8 +62,6 @@ pthread_t fifo_rx_thread;
 static volatile bool running = true;
 static int _opt_sock_port = DEF_PORT_NO;
 static int _opt_use_protocol = DEF_PROTOCOL;
-static int MAX_BUF_SIZE_BYTES = DEF_MAX_BUF_SIZE_BYTES;
-static int _opt_min_bytes = DEF_MIN_BUF_SIZE_BYTES;
 static char _opt_dev_tx[255];
 static char _opt_dev_rx[255];
 static int writeFifoFd;
@@ -108,7 +107,7 @@ int main(int argc, char **argv)
     /*************/
     /* open FIFO */
     /*************/
-    readFifoFd = open(_opt_dev_rx, O_RDONLY);
+    readFifoFd = open(_opt_dev_rx, O_RDONLY | O_NONBLOCK);
     writeFifoFd = open(_opt_dev_tx, O_WRONLY);
     if (readFifoFd < 0) {
         printf("Open read failed with error: %s\n", strerror(errno));
@@ -226,7 +225,6 @@ static void *ethn_rx_thread_fn(void *data)
     ssize_t bytesFifo;
     int packets_rx, packets_tx;
     uint8_t buf[MAX_BUF_SIZE_BYTES];
-    int packetRead = 0;
     uint32_t vacancy;
 
     /* shup up compiler */
@@ -238,47 +236,44 @@ static void *ethn_rx_thread_fn(void *data)
     packets_tx = 0;
 
     while (running) {
-            if (_opt_use_protocol == TCP_PROTOCOL) {
-                bytesSock = read(tcpSocketFd, buf, MAX_BUF_SIZE_BYTES);
-            } else {
-                bytesSock = recvfrom(serverFd, buf, MAX_BUF_SIZE_BYTES,
-                        MSG_WAITALL, (struct sockaddr *)&cliaddr,
-                        &cliaddrlen);
-                udpInit = 1;
-            }
-            if (bytesSock > 0) {
-                packetRead = 1;
-                packets_rx++;
-                DEBUG_PRINT("bytes from socket %d\n",bytesSock);
-            } else if (bytesSock == 0) {
-                DEBUG_PRINT("Connection lost\n");
-                socket_read_error = 1;
-                quit();
-            } else {
-                perror("read");
-                socket_read_error = 1;
-                quit();
-            }
+        if (_opt_use_protocol == TCP_PROTOCOL) {
+            bytesSock = read(tcpSocketFd, buf, MAX_BUF_SIZE_BYTES);
+        } else {
+            bytesSock = recvfrom(serverFd, buf, MAX_BUF_SIZE_BYTES,
+                    MSG_WAITALL, (struct sockaddr *)&cliaddr,
+                    &cliaddrlen);
+            udpInit = 1;
+        }
+        if (bytesSock > 0) {
+            packets_rx++;
+            DEBUG_PRINT("bytes from socket %d\n",bytesSock);
+        } else if (bytesSock == 0) {
+            DEBUG_PRINT("Connection lost\n");
+            socket_read_error = 1;
+            quit();
+        } else {
+            perror("read");
+            socket_read_error = 1;
+            quit();
+        }
 
-            do {
-                rc = ioctl(readFifoFd, AXIS_FIFO_GET_TX_VACANCY, &vacancy);
-                if (rc) {
-                    perror("ioctl");
-                    return -1;
-                }
-                if (vacancy < bytesSock)
-                    usleep(100);
-            } while (vacancy < bytesSock);
-
-            bytesFifo = write(writeFifoFd, buf, bytesSock);
-            if (bytesFifo > 0) {
-                DEBUG_PRINT("bytes to fifo %d\n",bytesFifo);
-                packets_tx++;
-                packetRead = 0;
-            } else {
-                perror("write");
-                quit();
+        do {
+            rc = ioctl(writeFifoFd, AXIS_FIFO_GET_TX_VACANCY, &vacancy);
+            if (rc) {
+                perror("ioctl");
+                return (void *)0;
             }
+            if (vacancy < (uint32_t)bytesSock)
+                usleep(100);
+        } while (vacancy < (uint32_t)bytesSock);
+
+        bytesFifo = write(writeFifoFd, buf, bytesSock);
+        if (bytesFifo > 0) {
+            DEBUG_PRINT("bytes to fifo %d\n",bytesFifo);
+            packets_tx++;
+        } else {
+            perror("write");
+            quit();
         }
     }
     printf("ethernet packets rx : %d, fifo packets tx     : %d\n",packets_rx, packets_tx);
@@ -288,12 +283,10 @@ static void *ethn_rx_thread_fn(void *data)
 
 static void *fifo_rx_thread_fn(void *data)
 {
-    int rc;
     ssize_t bytesSock;
     ssize_t bytesFifo;
     int packets_rx, packets_tx;
     uint8_t buf[MAX_BUF_SIZE_BYTES];
-    int packetRead = 0;
 
     /* shup up compiler */
     (void)data;
@@ -306,37 +299,30 @@ static void *fifo_rx_thread_fn(void *data)
     while (running) {
         bytesFifo = read(readFifoFd, buf, MAX_BUF_SIZE_BYTES);
         if (bytesFifo > 0) {
-            packetRead = 1;
             DEBUG_PRINT("bytes from fifo %d\n",bytesFifo);
             packets_rx++;
-        } else {
-            perror("read");
-            quit();
-        }
-
-        if (_opt_use_protocol == TCP_PROTOCOL) {
-            bytesSock = write(tcpSocketFd, buf, bytesFifo);
-            if (bytesSock > 0) {
-                DEBUG_PRINT("bytes to socket %d\n",bytesSock);
-                packets_tx++;
-                packetRead = 0;
-            } else {
-                perror("write");
-                socket_write_error = 1;
-                quit();
-            }
-        } else if (_opt_use_protocol == UDP_PROTOCOL && udpInit) {
-            bytesSock = sendto(serverFd, buf, bytesFifo,
-                    MSG_CONFIRM, (const struct sockaddr *)&cliaddr,
-                    cliaddrlen);
-            if (bytesSock > 0) {
-                DEBUG_PRINT("bytes to socket %d\n",bytesSock);
-                packets_tx++;
-                packetRead = 0;
-            } else {
-                perror("write");
-                socket_write_error = 1;
-                quit();
+            if (_opt_use_protocol == TCP_PROTOCOL) {
+                bytesSock = write(tcpSocketFd, buf, bytesFifo);
+                if (bytesSock > 0) {
+                    DEBUG_PRINT("bytes to socket %d\n",bytesSock);
+                    packets_tx++;
+                } else {
+                    perror("write");
+                    socket_write_error = 1;
+                    quit();
+                }
+            } else if (_opt_use_protocol == UDP_PROTOCOL && udpInit) {
+                bytesSock = sendto(serverFd, buf, bytesFifo,
+                        MSG_CONFIRM, (const struct sockaddr *)&cliaddr,
+                        cliaddrlen);
+                if (bytesSock > 0) {
+                    DEBUG_PRINT("bytes to socket %d\n",bytesSock);
+                    packets_tx++;
+                } else {
+                    perror("write");
+                    socket_write_error = 1;
+                    quit();
+                }
             }
         }
     }
