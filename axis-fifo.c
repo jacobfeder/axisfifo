@@ -369,6 +369,16 @@ static const struct attribute_group axis_fifo_attrs_group = {
  * ----------------------------
  */
 
+static void reset_tx(struct axis_fifo *fifo)
+{
+    iowrite32(XLLF_TDFR_RESET_MASK, fifo->base_addr + XLLF_TDFR_OFFSET);
+}
+
+static void reset_rx(struct axis_fifo *fifo)
+{
+    iowrite32(XLLF_RDFR_RESET_MASK, fifo->base_addr + XLLF_RDFR_OFFSET);
+}
+
 static void reset_ip_core(struct axis_fifo *fifo)
 {
     iowrite32(XLLF_SRR_RESET_MASK, fifo->base_addr + XLLF_SRR_OFFSET);
@@ -842,28 +852,32 @@ static irqreturn_t axis_fifo_irq(int irq, void *dw)
         } else if (pending_interrupts & XLLF_INT_RPURE_MASK) {
             /* receive fifo under-read error interrupt */
             dev_err(fifo->dt_device,
-                "receive under-read interrupt\n");
+                "receive under-read interrupt, reset rx fifo\n");
+            reset_rx(fifo);
 
             iowrite32(XLLF_INT_RPURE_MASK & XLLF_INT_ALL_MASK,
                   fifo->base_addr + XLLF_ISR_OFFSET);
         } else if (pending_interrupts & XLLF_INT_RPORE_MASK) {
             /* receive over-read error interrupt */
             dev_err(fifo->dt_device,
-                "receive over-read interrupt\n");
+                "receive over-read interrupt, reset rx fifo\n");
+                reset_rx(fifo);
 
             iowrite32(XLLF_INT_RPORE_MASK & XLLF_INT_ALL_MASK,
                   fifo->base_addr + XLLF_ISR_OFFSET);
         } else if (pending_interrupts & XLLF_INT_RPUE_MASK) {
             /* receive underrun error interrupt */
             dev_err(fifo->dt_device,
-                "receive underrun error interrupt\n");
+                "receive underrun error interrupt, reset rx fifo\n");
+            reset_rx(fifo);
 
             iowrite32(XLLF_INT_RPUE_MASK & XLLF_INT_ALL_MASK,
                   fifo->base_addr + XLLF_ISR_OFFSET);
         } else if (pending_interrupts & XLLF_INT_TPOE_MASK) {
             /* transmit overrun error interrupt */
             dev_err(fifo->dt_device,
-                "transmit overrun error interrupt\n");
+                "transmit overrun error interrupt, reset tx fifo\n");
+            reset_tx(fifo);
 
             iowrite32(XLLF_INT_TPOE_MASK & XLLF_INT_ALL_MASK,
                   fifo->base_addr + XLLF_ISR_OFFSET);
