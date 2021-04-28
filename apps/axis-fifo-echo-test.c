@@ -38,6 +38,7 @@
  *----------------------------------------------------------------------------*/
 #define DEF_DEV_TX "/dev/axis_fifo_0x43c10000"
 #define DEF_DEV_RX "/dev/axis_fifo_0x43c10000"
+#define MAX_BUF_SIZE_BYTES 1450
 
 #define DEBUG_PRINT(fmt, args...) printf("DEBUG %s:%d(): " fmt, \
         __func__, __LINE__, ##args)
@@ -122,7 +123,6 @@ int main(int argc, char **argv)
        sleep(1);
     }
 
-ret:
     printf("SHUTTING DOWN\n");
     pthread_join(write_to_fifo_thread, NULL);
     pthread_join(read_from_fifo_thread, NULL);
@@ -139,16 +139,14 @@ static void quit(void)
 static void *write_to_fifo_thread_fn(void *data)
 {
     int rc;
-    int packets_rx, packets_tx;
+    int packets_tx;
+    ssize_t bytesFifo;
     char buf[MAX_BUF_SIZE_BYTES];
     uint32_t vacancy;
 
     /* shup up compiler */
     (void)data;
 
-    memset(&cliaddr, 0, sizeof(cliaddr));
-
-    packets_rx = 0;
     packets_tx = 0;
 
     while (running) {
@@ -162,7 +160,8 @@ static void *write_to_fifo_thread_fn(void *data)
                 usleep(100);
         } while (vacancy < (uint32_t)MAX_BUF_SIZE_BYTES);
 
-        sscanf(&buf[0],"%s");
+        printf("Send a message to %s : ",_opt_dev_tx);
+        scanf("%s",&buf[0]);
         printf("Sending %s\n\r",buf);
 
         bytesFifo = write(writeFifoFd, buf, strlen(buf));
@@ -180,18 +179,14 @@ static void *write_to_fifo_thread_fn(void *data)
 
 static void *read_from_fifo_thread_fn(void *data)
 {
-    ssize_t bytesSock;
     ssize_t bytesFifo;
-    int packets_rx, packets_tx;
+    int packets_rx;
     uint8_t buf[MAX_BUF_SIZE_BYTES];
 
     /* shup up compiler */
     (void)data;
 
-    memset(&cliaddr, 0, sizeof(cliaddr));
-
     packets_rx = 0;
-    packets_tx = 0;
 
     while (running) {
         bytesFifo = read(readFifoFd, buf, MAX_BUF_SIZE_BYTES);

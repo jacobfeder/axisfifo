@@ -219,6 +219,7 @@ static void *ethn_rx_thread_fn(void *data)
     int packets_rx, packets_tx;
     uint8_t buf[MAX_BUF_SIZE_BYTES];
     uint32_t vacancy;
+    int vacancyPrint = 0;
 
     /* shup up compiler */
     (void)data;
@@ -257,8 +258,10 @@ static void *ethn_rx_thread_fn(void *data)
                 perror("ioctl");
                 return (void *)0;
             }
-            if (vacancy < (uint32_t)bytesSock)
+            if (vacancy < (uint32_t)bytesSock) {
                 usleep(100);
+                vacancyPrint++;
+            }
         } while (vacancy < (uint32_t)bytesSock);
 
         bytesFifo = write(writeFifoFd, buf, bytesSock);
@@ -269,6 +272,11 @@ static void *ethn_rx_thread_fn(void *data)
         } else {
             perror("write");
             quit();
+        }
+
+        if (vacancyPrint) {
+            DEBUG_PRINT("Had to wait for tx vacancy %d usec\n",vacancyPrint*100);
+            vacancyPrint = 0;
         }
     }
     printf("ethernet packets rx : %d, fifo packets tx     : %d\n",packets_rx, packets_tx);

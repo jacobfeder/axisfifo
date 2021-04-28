@@ -545,12 +545,12 @@ static ssize_t axis_fifo_write(struct file *f, const char __user *buf,
     struct axis_fifo *fifo = (struct axis_fifo *)f->private_data;
     unsigned int words_to_write;
     unsigned int copied;
-        unsigned int copiedBytes;
+    unsigned int copiedBytes;
     unsigned int copy;
     unsigned int i;
     int ret;
     u32 tmp_buf[WRITE_BUF_SIZE];
-        int leftover;
+    int leftover;
 
     if (!fifo->has_tkeep && len % sizeof(u32)) {
         dev_err(fifo->dt_device,
@@ -558,8 +558,13 @@ static ssize_t axis_fifo_write(struct file *f, const char __user *buf,
         return -EINVAL;
     }
 
-    words_to_write = len / sizeof(u32);
+    if (len > 0 && len < 4) {
+        words_to_write = 1;
+        leftover = 0;
+    } else {
+        words_to_write = len / sizeof(u32);
         leftover = len % sizeof(u32);
+    }
 
     if (!words_to_write) {
         dev_err(fifo->dt_device,
