@@ -1,12 +1,10 @@
 /**
- * @file axis-fifo-eth-loop.c
+ * @file axis-fifo-echo-test.c
  * @author Jason Gutel jason.gutel@gmail.com
  *
- * Sets up an echo ping-pong server over a TCP connection. Packets are sent
- * over sockets, sent to the AXI Stream FIFO core (assumed in loopback), and
- * then sent back out over the socket.
- *
- * Shows example of using poll() with the kernel module
+ * Simple test app that will prompt user to send an ASCII
+ * string to the tx fifo in one thread and print everything
+ * that shows up on the rx fifo. Useful for debugging.
  *
  * @bug No known bugs.
  **/
