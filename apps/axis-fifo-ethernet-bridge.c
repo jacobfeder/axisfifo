@@ -1,12 +1,13 @@
 /**
- * @file axis-fifo-eth-loop.c
+ * @file axis-fifo-ethernet-bridge.c
  * @author Jason Gutel jason.gutel@gmail.com
  *
- * Sets up an echo ping-pong server over a TCP connection. Packets are sent
- * over sockets, sent to the AXI Stream FIFO core (assumed in loopback), and
- * then sent back out over the socket.
- *
- * Shows example of using poll() with the kernel module
+ * Sets up a bridge between a TCP|UDP socket and the axis fifo
+ * driver. Packets received from the socket will be sent to
+ * the associated TX FIFO. Packets received form the RX FIFO
+ * will be sent back out over the socket. For UDP the socket
+ * needs to be initialized so that the partner IPv4 address
+ * is known.
  *
  * @bug No known bugs.
  **/
