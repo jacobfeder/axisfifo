@@ -58,12 +58,11 @@
 #define XLLF_INT_TXERROR_MASK     0x12000000 /* Transmit Error status ints */
 
 /* ----------------------------
- *      ioctls 
+ *      ioctls
  * ----------------------------
  */
-
 #define AXIS_FIFO_IOCTL_MAGIC 'Q'
-#define AXIS_FIFO_NUM_IOCTLS 8
+#define AXIS_FIFO_NUM_IOCTLS 14
 
 
 struct axis_fifo_kern_regInfo{
@@ -79,5 +78,11 @@ struct axis_fifo_kern_regInfo{
 #define AXIS_FIFO_SET_RX_MIN_PKT  _IOW(AXIS_FIFO_IOCTL_MAGIC, 5,  uint32_t)
 #define AXIS_FIFO_RESET_IP        _IO(AXIS_FIFO_IOCTL_MAGIC,6)
 #define AXIS_FIFO_GET_FPGA_ADDR   _IOR(AXIS_FIFO_IOCTL_MAGIC,7, uint32_t)
+#define AXIS_FIFO_GET_TX_VACANCY  _IOR(AXIS_FIFO_IOCTL_MAGIC, 8, uint32_t)
+#define AXIS_FIFO_GET_RX_OCCUPANCY _IOR(AXIS_FIFO_IOCTL_MAGIC, 9, uint32_t)
+#define AXIS_FIFO_GET_TX_PKTS_SENT _IOR(AXIS_FIFO_IOCTL_MAGIC, 10, uint32_t)
+#define AXIS_FIFO_GET_TX_BYTES_SENT _IOR(AXIS_FIFO_IOCTL_MAGIC, 11, uint32_t)
+#define AXIS_FIFO_GET_RX_PKTS_READ _IOR(AXIS_FIFO_IOCTL_MAGIC, 12, uint32_t)
+#define AXIS_FIFO_GET_RX_BYTES_READ _IOR(AXIS_FIFO_IOCTL_MAGIC, 13, uint32_t)
 
 #endif /* AXIS_FIFO_H */

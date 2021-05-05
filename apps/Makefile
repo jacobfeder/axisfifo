@@ -1,9 +1,9 @@
 CC ?= $(CROSS_COMPILE)gcc
 CFLAGS ?= -Wall -Wextra
 LDFLAGS ?= -lpthread
-CFLAGS += 
+CFLAGS +=
 
-BIN := axis-fifo-test axis-fifo-eth-loop
+BIN := axis-fifo-test axis-fifo-ethernet-bridge axis-fifo-echo-test
 
 all: $(BIN)
 
