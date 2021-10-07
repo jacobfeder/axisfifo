@@ -618,23 +618,18 @@ static ssize_t axis_fifo_write(struct file *f, const char __user *buf,
         return -EINVAL;
     }
 
-    if (len > 0 && len < 4) {
-        words_to_write = 1;
-        leftover = 0;
-    } else {
-        words_to_write = len / sizeof(u32);
-        leftover = len % sizeof(u32);
-    }
+    words_to_write = len / sizeof(u32);
+    leftover = len % sizeof(u32);
 
-    if (!words_to_write) {
+    if ((!fifo->has_tkeep && !words_to_write) || (fifo->has_tkeep && len == 0)) {
         dev_err(fifo->dt_device,
             "tried to send a packet of length 0\n");
         return -EINVAL;
     }
 
-    if (words_to_write > fifo->tx_fifo_depth) {
+    if (words_to_write + !!leftover > fifo->tx_fifo_depth) {
         dev_err(fifo->dt_device, "tried to write more words [%u] than slots in the fifo buffer [%u]\n",
-            words_to_write, fifo->tx_fifo_depth);
+            words_to_write + !!leftover, fifo->tx_fifo_depth);
         return -EINVAL;
     }
 
@@ -642,7 +637,7 @@ static ssize_t axis_fifo_write(struct file *f, const char __user *buf,
         /* opened in non-blocking mode
          * return if there is not enough room available in the fifo
          */
-        if (words_to_write > ioread32(fifo->base_addr +
+        if (words_to_write + !!leftover > ioread32(fifo->base_addr +
                           XLLF_TDFV_OFFSET)) {
             return -EAGAIN;
         }
@@ -656,7 +651,7 @@ static ssize_t axis_fifo_write(struct file *f, const char __user *buf,
         ret = wait_event_interruptible_lock_irq_timeout(
             fifo->write_queue,
             ioread32(fifo->base_addr + XLLF_TDFV_OFFSET)
-                >= words_to_write,
+                >= words_to_write + !!leftover,
             fifo->write_queue_lock,
             (write_timeout >= 0) ? msecs_to_jiffies(write_timeout) :
                 MAX_SCHEDULE_TIMEOUT);
