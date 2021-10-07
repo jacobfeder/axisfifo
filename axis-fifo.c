@@ -518,7 +518,7 @@ static ssize_t axis_fifo_read(struct file *f, char __user *buf,
             return -EAGAIN;
         } else if (ret == -ERESTARTSYS) {
             /* signal received */
-            return -ERESTARTSYS;
+            return -EINTR;
         } else if (ret < 0) {
             dev_err(fifo->dt_device, "wait_event_interruptible_timeout() error in read (ret=%i)\n",
                 ret);
@@ -664,7 +664,7 @@ static ssize_t axis_fifo_write(struct file *f, const char __user *buf,
             return -EAGAIN;
         } else if (ret == -ERESTARTSYS) {
             /* signal received */
-            return -ERESTARTSYS;
+            return -EINTR;
         } else if (ret < 0) {
             /* unknown error */
             dev_err(fifo->dt_device,
