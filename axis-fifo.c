@@ -1060,7 +1060,7 @@ static int get_dts_property(struct axis_fifo *fifo,
 
 static int axis_fifo_probe(struct platform_device *pdev)
 {
-    struct resource *r_irq; /* interrupt resources */
+    int irq; /* interrupt number */
     struct resource *r_mem; /* IO mem resources */
     struct device *dev = &pdev->dev; /* OS device (from device tree) */
     struct axis_fifo *fifo = NULL;
@@ -1344,17 +1344,18 @@ static int axis_fifo_probe(struct platform_device *pdev)
      * ----------------------------
      */
 
-    /* get IRQ resource */
-    r_irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
-    if (!r_irq) {
-        dev_err(fifo->dt_device, "no IRQ found for 0x%pa\n",
-            &fifo->mem->start);
-        rc = -EIO;
+    /* gets an IRQ for platform device */
+    irq = platform_get_irq(pdev, 0);
+    if (irq < 0) {
+        if (irq != -EPROBE_DEFER)
+            dev_err(fifo->dt_device, "no IRQ found for 0x%pa (error %i)\n",
+                &fifo->mem->start, irq);
+        rc = irq;
         goto err_unmap;
     }
 
     /* request IRQ */
-    fifo->irq = r_irq->start;
+    fifo->irq = irq;
     rc = request_irq(fifo->irq, &axis_fifo_irq, 0, DRIVER_NAME, fifo);
     if (rc) {
         dev_err(fifo->dt_device, "couldn't allocate interrupt %i\n",
