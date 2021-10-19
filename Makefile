@@ -1,10 +1,12 @@
 obj-m := axis-fifo.o
 
+SRC := $(shell pwd)
+
 all:
-	$(MAKE) -C $(KDIR) SUBDIRS=`pwd` modules
+	$(MAKE) -C $(KERNEL_SRC) M=$(SRC) modules
 
 clean:
-	$(MAKE) -C $(KDIR) SUBDIRS=`pwd` clean
+	$(MAKE) -C $(KERNEL_SRC) M=$(SRC) clean
 
 modules_install:
-	$(MAKE) -C $(KDIR) SUBDIRS=`pwd` modules_install
+	$(MAKE) -C $(KERNEL_SRC) M=$(SRC) modules_install
